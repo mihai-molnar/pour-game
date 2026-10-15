@@ -1,20 +1,11 @@
 class_name Glass
 extends Node2D
-## A water tumbler. Its inside is rasterized once into pixel columns/rows, so
-## the volume → level mapping is exact to what's drawn. The surface is a 1D
-## wave (one spring column per pixel) that the stream and glass motion excite;
-## waves are visual only — the volume is the gameplay truth.
-
-@export_group("Target")
-@export_range(0.1, 1.0) var target_min := 0.55
-@export_range(0.1, 1.0) var target_max := 0.85
-## |error| within this share of the target = PERFECT.
-@export var perfect_tol := 0.03
-## |error| within this share = GOOD (coins scale down toward the edge).
-@export var good_tol := 0.10
-@export var perfect_coins := 10
-@export var good_coins_max := 8
-@export var good_coins_min := 2
+## A glass (tumbler, mug, cup …) configured by a DrinkDef. Its inside is
+## rasterized once into pixel columns/rows, so the volume → level mapping is
+## exact to what's drawn. The surface is a 1D wave (one spring column per
+## pixel) that the stream and glass motion excite; waves are visual only — the
+## volume is the gameplay truth. The fill line is fixed per drink
+## (fill_fraction × capacity) and the ±good_tol band is drawn beside it.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -26,10 +17,9 @@ extends Node2D
 ## Slosh from the glass sliding (liquid lags the motion).
 @export var move_slosh := 0.0012
 
-var interior := PackedVector2Array([Vector2(-15, -5), Vector2(15, -5), Vector2(19, -74), Vector2(-19, -74)])
-var outer := PackedVector2Array([Vector2(-17, 0), Vector2(17, 0), Vector2(21, -74), Vector2(-21, -74)])
-const RIM_Y := -74
-
+var def: DrinkDef
+var interior := PackedVector2Array()
+var outer := PackedVector2Array()
 var volume := 0.0
 var target := 0.0
 var spilled := 0.0
@@ -40,12 +30,14 @@ var _y0 := 0
 var _col_top := PackedInt32Array()
 var _col_bottom := PackedInt32Array()
 var _row_area := PackedInt32Array()
+var _row_left := PackedInt32Array()
+var _row_right := PackedInt32Array()
 var _wave_h := PackedFloat32Array()
 var _wave_v := PackedFloat32Array()
 var _level := 0.0
 var _target_y := 0.0
 var _bubbles: Array[Vector3] = []  # x, y (local), rise speed
-var _drips: Array[Vector3] = []    # x side (-1/1), y (local), speed
+var _drips: Array[Vector3] = []    # side (-1/1), y (local), speed
 var _last_x := 0.0
 var _last_vx := 0.0
 
@@ -55,21 +47,35 @@ var _last_vx := 0.0
 
 
 func _ready() -> void:
-	_rasterize()
 	_liquid.draw_func = _draw_liquid
 	_front.draw_func = _draw_front
-	_mat.set_shader_parameter("center_x", 0.0)
-	_mat.set_shader_parameter("half_width", 19.0)
-	_mat.set_shader_parameter("highlight_x", -15.0)
 	_last_x = global_position.x
+
+
+func setup(d: DrinkDef) -> void:
+	def = d
+	interior = d.glass_interior
+	outer = d.glass_outer
+	_rasterize()
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for p in interior:
+		lo = lo.min(p)
+		hi = hi.max(p)
+	_mat.set_shader_parameter("tint", d.liquid_color)
+	_mat.set_shader_parameter("center_x", (lo.x + hi.x) * 0.5)
+	_mat.set_shader_parameter("half_width", (hi.x - lo.x) * 0.5)
+	_mat.set_shader_parameter("highlight_x", lo.x + 4.0)
+	target = d.fill_fraction * capacity
+	_target_y = level_for(target)
 	reset()
 
 
+## Empties the glass for the next serve (the fill line stays where it is).
 func reset() -> void:
 	volume = 0.0
 	spilled = 0.0
-	target = randf_range(target_min, target_max) * capacity
-	_target_y = level_for(target)
+	_level = level_for(0.0)
 	_wave_h.fill(0.0)
 	_wave_v.fill(0.0)
 	_bubbles.clear()
@@ -90,6 +96,10 @@ func _rasterize() -> void:
 	_col_bottom.resize(cols)
 	_row_area.resize(rows)
 	_row_area.fill(0)
+	_row_left.resize(rows)
+	_row_left.fill(1 << 30)
+	_row_right.resize(rows)
+	_row_right.fill(-(1 << 30))
 	_wave_h.resize(cols)
 	_wave_v.resize(cols)
 	capacity = 0.0
@@ -101,6 +111,8 @@ func _rasterize() -> void:
 				top = mini(top, _y0 + r)
 				bottom = maxi(bottom, _y0 + r + 1)
 				_row_area[r] += 1
+				_row_left[r] = mini(_row_left[r], _x0 + c)
+				_row_right[r] = maxi(_row_right[r], _x0 + c)
 				capacity += 1.0
 		_col_top[c] = top
 		_col_bottom[c] = bottom
@@ -119,13 +131,38 @@ func level_for(vol: float) -> float:
 	return float(_y0)
 
 
+func target_y() -> float:
+	return _target_y
+
+
+## Local rows of the ±good_tol band edges: x = upper (+tol), y = lower (−tol).
+func band_levels() -> Vector2:
+	var tol: float = GameState.stats.good_tol
+	return Vector2(roundf(level_for(target * (1.0 + tol))), roundf(level_for(target * (1.0 - tol))))
+
+
 func rim_y_world() -> float:
-	return global_position.y + RIM_Y
+	return global_position.y + _y0
 
 
-## World x range of the opening at the rim.
+## World x range of the opening (the interior's top pixel row).
 func opening_world() -> Vector2:
-	return Vector2(global_position.x + interior[3].x, global_position.x + interior[2].x)
+	return Vector2(global_position.x + _row_left[0], global_position.x + _row_right[0] + 1)
+
+
+## Outer wall x (left, right) at local y.
+func outer_x_at(y: float) -> Vector2:
+	var lo := INF
+	var hi := -INF
+	var n := outer.size()
+	for i in n:
+		var a := outer[i]
+		var b := outer[(i + 1) % n]
+		if a.y != b.y and (a.y - y) * (b.y - y) <= 0.0:
+			var x := lerpf(a.x, b.x, (y - a.y) / (b.y - a.y))
+			lo = minf(lo, x)
+			hi = maxf(hi, x)
+	return Vector2(lo, hi)
 
 
 func _col(x_world: float) -> int:
@@ -155,7 +192,7 @@ func receive(x_world: float, vol: float, speed: float) -> void:
 		spilled += volume - capacity
 		volume = capacity
 		if _drips.size() < 30:
-			_drips.append(Vector3(1.0 if randf() < 0.5 else -1.0, RIM_Y, randf_range(30.0, 60.0)))
+			_drips.append(Vector3(1.0 if randf() < 0.5 else -1.0, float(_y0), randf_range(30.0, 60.0)))
 	var c := _col(x_world)
 	var kick := vol * speed * impact_gain
 	_wave_v[c] -= kick
@@ -219,27 +256,8 @@ func step(dt: float) -> void:
 	_front.queue_redraw()
 
 
-## Scores the current fill. Returns {band, coins, error} where error is signed (share of target).
-func evaluate() -> Dictionary:
-	var err := (volume - target) / target
-	var a := absf(err)
-	if spilled > 0.5:
-		return {"band": "SPILL", "coins": 0, "error": err}
-	if a <= perfect_tol:
-		return {"band": "PERFECT", "coins": perfect_coins, "error": err}
-	if a <= good_tol:
-		var t := (a - perfect_tol) / (good_tol - perfect_tol)
-		return {"band": "GOOD", "coins": roundi(lerpf(good_coins_max, good_coins_min, t)), "error": err}
-	return {"band": "MISS", "coins": 0, "error": err}
-
-
-func _wall_x(y: float, side: float) -> float:
-	# Outer wall x at local y (walls taper from 17 at the base to 21 at the rim).
-	return side * (17.0 + 4.0 * (-y) / 74.0)
-
-
 func _draw_liquid(ci: CanvasItem) -> void:
-	if volume < 0.5:
+	if def == null or volume < 0.5:
 		return
 	for c in _col_top.size():
 		var top := maxi(roundi(_surface_local(c)), _col_top[c])
@@ -247,13 +265,12 @@ func _draw_liquid(ci: CanvasItem) -> void:
 			ci.draw_rect(Rect2(_x0 + c, top, 1, _col_bottom[c] - top), Color.WHITE)
 
 
-func _px(ci: CanvasItem, a: Vector2, b: Vector2, color: Color) -> void:
-	ci.draw_line(a + Vector2(0.5, 0.5), b + Vector2(0.5, 0.5), color)
-
-
 func _draw_front(ci: CanvasItem) -> void:
+	if def == null:
+		return
 	ci.draw_colored_polygon(outer, Color(Palette.FROST, 0.08))
-	ci.draw_rect(Rect2(-17, -5, 34, 5), Color(Palette.FROST, 0.3))
+	for wall in DrawLayer.wall_polygons(outer, interior):
+		ci.draw_colored_polygon(wall, Color(Palette.FROST, 0.3))
 
 	# Meniscus + bubbles.
 	if volume >= 0.5:
@@ -264,27 +281,62 @@ func _draw_front(ci: CanvasItem) -> void:
 	for b in _bubbles:
 		ci.draw_rect(Rect2(floorf(b.x), floorf(b.y), 1, 1), Color(Palette.WHITE, 0.7))
 
-	# Fill line: dashes inside, ticks outside.
-	var ty := roundi(_target_y)
-	var half := int(17.0 + 4.0 * (-ty) / 74.0) - 2
-	for x in range(-half, half, 4):
-		ci.draw_rect(Rect2(x, ty, 2, 1), Color(Palette.GOLD, 0.9))
-	var outer_x := int(_wall_x(ty, 1.0))
-	ci.draw_rect(Rect2(outer_x + 2, ty, 4, 1), Palette.GOLD)
-	ci.draw_rect(Rect2(-outer_x - 6, ty, 4, 1), Palette.GOLD)
+	_draw_band(ci)
+	_draw_fill_line(ci)
 
-	# Walls.
-	_px(ci, Vector2(-21, -74), Vector2(-17, -1), Palette.FROST)
-	_px(ci, Vector2(20, -74), Vector2(16, -1), Palette.FROST)
-	_px(ci, Vector2(-17, -1), Vector2(16, -1), Palette.FROST)
-	_px(ci, Vector2(-19, -73), Vector2(-15, -6), Color(Palette.MIST, 0.5))
-	_px(ci, Vector2(18, -73), Vector2(14, -6), Color(Palette.MIST, 0.5))
-	_px(ci, Vector2(-21, -74), Vector2(20, -74), Color(Palette.FROST, 0.7))
-	# Highlights.
-	_px(ci, Vector2(-16, -68), Vector2(-13, -12), Color(Palette.WHITE, 0.55))
-	_px(ci, Vector2(15, -66), Vector2(14, -52), Color(Palette.WHITE, 0.35))
-	ci.draw_rect(Rect2(-21, -74, 1, 1), Palette.WHITE)
-	ci.draw_rect(Rect2(20, -74, 1, 1), Palette.WHITE)
+	# Walls: outlines inset/outset half a pixel so 1 px lines land on the glass's own pixels.
+	for poly in Geometry2D.offset_polygon(outer, -0.5, Geometry2D.JOIN_MITER):
+		DrawLayer.draw_outline(ci, poly, Palette.FROST, Color(Palette.FROST, 0.7))
+	for poly in Geometry2D.offset_polygon(interior, 0.5, Geometry2D.JOIN_MITER):
+		DrawLayer.draw_outline(ci, poly, Color(Palette.MIST, 0.5), Color(0, 0, 0, 0))
+	# Highlights, derived from the interior's row spans.
+	var rows := _row_left.size()
+	for r in range(6, rows - 6):
+		ci.draw_rect(Rect2(_row_left[r] + 3, _y0 + r, 1, 1), Color(Palette.WHITE, 0.55))
+	for r in range(8, mini(22, rows)):
+		ci.draw_rect(Rect2(_row_right[r] - 3, _y0 + r, 1, 1), Color(Palette.WHITE, 0.35))
 
+	# Drips running down the outside after an overflow.
 	for d in _drips:
-		ci.draw_rect(Rect2(floorf(_wall_x(d.y, d.x)) + (0.0 if d.x > 0 else -1.0), floorf(d.y), 1, 2), Palette.WATER_LIGHT)
+		var walls := outer_x_at(d.y)
+		var px := floorf(walls.y) if d.x > 0.0 else floorf(walls.x) - 1.0
+		ci.draw_rect(Rect2(px, floorf(d.y), 1, 2), def.liquid_highlight)
+
+
+## The ±good_tol band: a light bracket (spine + end ticks pointing at the
+## glass) just outside the left wall, outlined dark so it reads on any background.
+func _draw_band(ci: CanvasItem) -> void:
+	var band := band_levels()
+	var y_top := int(band.x)
+	var y_bot := int(band.y)
+	var x := floori(outer_x_at(float(y_top)).x) - 4
+	var h := y_bot - y_top + 1
+	ci.draw_rect(Rect2(x - 1, y_top - 1, 3, h + 2), Palette.INK)
+	ci.draw_rect(Rect2(x - 1, y_top - 1, 5, 3), Palette.INK)
+	ci.draw_rect(Rect2(x - 1, y_bot - 1, 5, 3), Palette.INK)
+	ci.draw_rect(Rect2(x, y_top, 1, h), Palette.FROST)
+	ci.draw_rect(Rect2(x, y_top, 3, 1), Palette.FROST)
+	ci.draw_rect(Rect2(x, y_bot, 3, 1), Palette.FROST)
+
+
+## The fill line: a 1 px white line with dark rows above and below across the
+## inside, plus outlined ticks outside the walls. The left tick runs from the
+## band bracket to the wall, so it reads as the bracket's centre mark.
+func _draw_fill_line(ci: CanvasItem) -> void:
+	var ty := roundi(_target_y)
+	var r := ty - _y0
+	if r < 0 or r >= _row_left.size():
+		return
+	var left := _row_left[r]
+	var width := _row_right[r] - left + 1
+	ci.draw_rect(Rect2(left, ty - 1, width, 3), Palette.INK)
+	ci.draw_rect(Rect2(left, ty, width, 1), Palette.WHITE)
+	var walls := outer_x_at(float(ty) + 0.5)
+	var bracket_x := floori(outer_x_at(band_levels().x).x) - 4
+	var left_end := floori(walls.x) - 2
+	ci.draw_rect(Rect2(bracket_x - 1, ty - 1, left_end - bracket_x + 2, 3), Palette.INK)
+	ci.draw_rect(Rect2(bracket_x, ty, left_end - bracket_x, 1), Palette.WHITE)
+	# Short right tick: the pourer's wall sits ~4 px to the right of the glass.
+	var right_start := ceili(walls.y) + 1
+	ci.draw_rect(Rect2(right_start - 1, ty - 1, 4, 3), Palette.INK)
+	ci.draw_rect(Rect2(right_start, ty, 2, 1), Palette.WHITE)

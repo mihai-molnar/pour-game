@@ -1,29 +1,32 @@
-# Pour prototype (spike — throwaway)
+# Pour prototype
 
-Answers two questions before designing the real game: does the pour *feel* good, and does the liquid *look* good as pixel art at 640×360?
+A side-view pouring game at 640×360: fill each glass to the fill line before the round timer runs out, and the liquid is pixel-art refracted water.
 
 ## Controls
 
-- **Hold ↓** — tilt the pitcher. It swings fast until the water reaches the lip, then slowly while pouring.
+- **Hold ↓** — tilt the pourer. It swings fast until the water reaches the lip, then slowly while pouring.
 - **Release** — it eases back upright; liquid already in the air (and a little more from the lip) still lands.
-- **Space** — serve. Waits for the stream to finish, scores the glass, slides in a new one with a new gold fill line.
-- **F1** debug readout · **R** reset coins · **Esc** quit
+- **Space** — serve the glass (waits for the stream to finish); on the summary screen, start the next round.
+- **F1** debug readout · **Esc** quit
 
-Scoring: within ±3% of the line = PERFECT (10), within ±10% = GOOD (8→2), else MISS; overflowing = SPILLED.
+## Rounds
+
+- 30 s timer. Serve as many glasses as you can: within ±3 % of the line = PERFECT (10 coins), within ±10 % = GOOD (8→2), else MISS; overflowing = SPILLED.
+- Streak multiplier x1 → x3: GOOD adds a step, PERFECT two; MISS/SPILL resets it. The multiplier before the glass pays out.
+- At 0:00 it is LAST CALL: liquid in the air still lands and the last glass is served, then the summary and the next round. The pourer refills automatically when it runs dry.
+
+## Dev flags and checks
+
+```bash
+GODOT="/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot"
+"$GODOT" --path .                                                  # play
+"$GODOT" --headless --path . -- --sweep                            # tuning table (--sweep=<drink_id>)
+"$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=all
+"$GODOT" --path . --windowed --resolution 1280x720 -- --autoplay --shots=/abs/prefix --shot-every=1.5 --quit=40
+```
+
+See `CLAUDE.md` for architecture, tuning and the check runner.
 
 ## Tuning live
 
-Run from the editor (F5), then in the Scene dock switch to **Remote**, select `Pitcher` / `Glass` / `Stream` and edit the exported values in the Inspector — changes apply immediately. The liquid look lives in each vessel's `Liquid` node material (tint, refraction, lens, dither).
-
-Key knobs: `Pitcher.tilt_speed_deg`, `pour_tilt_speed_deg`, `return_force` (lower = more momentum), `pour_rate`, `start_fill`; `Glass.perfect_tol`, `good_tol`, `target_min/max`; `Stream.gravity`.
-
-## How it works
-
-- `pitcher.gd` — tilt dynamics; pouring is geometric (whatever no longer fits below the line through the spout lip leaves), with a slosh term.
-- `stream.gd` — one ballistic parcel per tick of pouring; drawn as a joined stream or drops; splashes.
-- `glass.gd` — rasterized interior (exact volume→level), 1D spring surface waves, bubbles, scoring.
-- `liquid.gdshader` — screen-space refraction (lens + wobble, whole-pixel offsets), thickness tint, ordered dithering, highlight stripe.
-- `main.gd` — input, serving, HUD; dev flags: `-- --sweep` (headless tuning table), `-- --hold=S --shots=PREFIX --quit=S` (autopilot screenshots).
-- `tools/make_background.py` — regenerates `art/background.png`.
-
-Godot: `"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --path .`
+Run from the editor (F5), switch the Scene dock to **Remote**, select `Pourer` / `Glass` / `Stream` and edit the exported values. Gameplay tunables live in `GameState.stats`; the liquid look lives in each vessel's `Liquid` node material.
