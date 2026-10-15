@@ -1,23 +1,37 @@
 extends CheckBase
 ## Checks the pourer: DrinkDef setup, capacity vs the glass, pour_speed_mult,
-## and the automatic refill. Run:
+## the held rest angle, arrivals (DOWN ignored until ready, a bottle's cork)
+## and both refill styles. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=pourer
 
 const DT := 1.0 / 60.0
+const GLASS_POS := Vector2(256, 280)
+
+var _events := {"vanished": 0, "landed": [], "popped": 0}
 
 
 func run() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	add_child(main)
+	main.manual = true
 	var pourer: Pourer = main.pourer
 	var glass: Glass = main.glass
-	var water: DrinkDef = GameState.owned_drinks[0]
+	var water: DrinkDef = GameState.WATER
+	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
+	pourer.vanished.connect(func(_at: Vector2) -> void: _events.vanished += 1)
+	pourer.landed.connect(func(at: Vector2) -> void: _events.landed.append(at))
+	pourer.popped.connect(func(_at: Vector2, _v: Vector2, _c: Color) -> void: _events.popped += 1)
+
+	glass.setup(water)
+	glass.place(GLASS_POS)
+	pourer.setup(water)
+	pourer.place(GLASS_POS + water.pourer_offset)
 	expect(pourer.def == water, "pourer is set up with water")
 	var glasses := pourer.full_volume / glass.target
 	expect(glasses > 2.3 and glasses < 2.7, "a full pitcher holds ~2.5 glasses at the line (got %.2f)" % glasses)
-	expect(pourer.position.is_equal_approx(Vector2(256, 280) + water.pourer_offset), "pourer sits at glass + pourer_offset")
 	pourer.reset()
-	expect(pourer.volume == pourer.full_volume and not pourer.refilling, "reset() = full, upright, not refilling")
+	expect(pourer.volume == pourer.full_volume and not pourer.refilling and not pourer.corked, "reset() = full, upright, not refilling")
+	expect(pourer.rotation == 0.0, "a pitcher stands upright at rest")
 
 	# The wall tint must not cover the interior (clip_polygons alone returns the
 	# interior as a hole polygon, which fills it with frost).
@@ -32,7 +46,7 @@ func run() -> void:
 	expect(ratio > 1.8 and ratio < 2.2, "pour_speed_mult 2 doubles the tilt speed (ratio %.2f)" % ratio)
 
 	# Running dry while tilted: DOWN is ignored (same motion held or not), it
-	# returns upright, then refills over stats.refill_time.
+	# returns upright, then refills in place over stats.refill_time.
 	var held := _drain_and_refill(pourer, true)
 	var free := _drain_and_refill(pourer, false)
 	expect(held.tilts == free.tilts, "refilling ignores DOWN")
@@ -43,6 +57,93 @@ func run() -> void:
 	var quick := _drain_and_refill(pourer, false)
 	GameState.stats.refill_time = 1.0
 	expect(absf(quick.refill_s - 0.5) < 0.1, "refill_time is read live (took %.2f s)" % quick.refill_s)
+	eq(_events.vanished, 0, "a pitcher never vanishes")
+
+	_check_arrival(pourer, water)
+	_check_wine(pourer, glass, wine)
+
+
+func _check_arrival(pourer: Pourer, water: DrinkDef) -> void:
+	var home := GLASS_POS + water.pourer_offset
+	_events.landed.clear()
+	pourer.volume = pourer.full_volume * 0.3
+	pourer.arrive(water, home)
+	expect(is_equal_approx(pourer.volume, pourer.full_volume), "an arriving pourer is full")
+	near(pourer.position.x, Pourer.OFFSCREEN_X, "it starts off-screen right")
+	expect(not pourer.corked, "a pitcher has no cork")
+	var t := 0.0
+	var tilted_while_arriving := false
+	while pourer.is_arriving() and t < 1.0:
+		pourer.step(DT, true)  # DOWN held all along
+		t += DT
+		tilted_while_arriving = tilted_while_arriving or (pourer.is_arriving() and pourer.tilt > 0.0)
+	expect(not tilted_while_arriving, "DOWN is ignored while it arrives")
+	expect(absf(t - Arrival.ARRIVE_TIME) <= DT + 1e-6, "the slide takes ARRIVE_TIME (%.3f s)" % t)
+	expect(pourer.position == home, "it ends exactly at home (%s)" % pourer.position)
+	eq(_events.landed.size(), 1, "landed fires once")
+	if _events.landed.size() == 1:
+		expect(_events.landed[0].is_equal_approx(home + Vector2(11, 105)), "...at the pitcher's leading bottom corner (%s)" % _events.landed[0])
+	pourer.step(DT, true)
+	expect(pourer.tilt > 0.0, "once it has arrived, DOWN tilts it")
+	pourer.arrive(water, home)
+	pourer.step(DT, false)
+	pourer.reset()
+	expect(pourer.position == home and not pourer.is_busy(), "reset() mid-arrival puts it back home, ready (%s)" % pourer.position)
+
+
+func _check_wine(pourer: Pourer, glass: Glass, wine: DrinkDef) -> void:
+	var home := GLASS_POS + wine.pourer_offset
+	glass.setup(wine)
+	glass.place(GLASS_POS)
+	pourer.setup(wine)
+	pourer.place(home)
+	var glasses := pourer.full_volume / glass.target
+	expect(glasses >= 2.5 and glasses <= 3.5, "a full bottle holds 2.5-3.5 glasses at the line (got %.2f)" % glasses)
+	near(pourer.rotation, -deg_to_rad(55.0), "the bottle is held at 55°")
+	var poured := 0.0
+	for i in 60:
+		poured += pourer.step(DT, false)
+	expect(poured == 0.0, "a full bottle held at rest doesn't pour")
+	var t := 0.0
+	while poured == 0.0 and t < 3.0:
+		poured += pourer.step(DT, true)
+		t += DT
+	expect(poured > 0.0, "holding DOWN pours from the bottle (after %.2f s)" % t)
+
+	# A drink change or round start: it arrives corked, ignores DOWN, and pops
+	# POP_TIME after it lands.
+	_events.popped = 0
+	pourer.arrive(wine, home)
+	expect(pourer.corked and pourer.is_busy(), "a bottle arrives corked")
+	t = 0.0
+	var tilted_while_corked := false
+	while pourer.corked and t < 2.0:
+		pourer.step(DT, true)
+		t += DT
+		tilted_while_corked = tilted_while_corked or (pourer.corked and pourer.tilt > 0.0)
+	var want := Arrival.ARRIVE_TIME + Pourer.POP_TIME
+	expect(absf(t - want) <= DT + 1e-6, "the cork pops %.2f s after it starts arriving (%.3f s)" % [want, t])
+	eq(_events.popped, 1, "popped fires once")
+	expect(not tilted_while_corked, "DOWN is ignored until the cork is out")
+	pourer.step(DT, true)
+	expect(pourer.tilt > 0.0 and not pourer.is_busy(), "then DOWN tilts it")
+
+	# Running dry: the empty bottle vanishes, a new corked one arrives and is
+	# uncorked, all within refill_time (never shorter than the slide + 0.1 s).
+	for refill_time: float in [1.0, 0.5, 0.2]:
+		GameState.stats.refill_time = refill_time
+		_events.vanished = 0
+		_events.popped = 0
+		var held := _drain_and_refill(pourer, true)
+		var free := _drain_and_refill(pourer, false)
+		var want_s := maxf(refill_time, Arrival.ARRIVE_TIME + Pourer.MIN_UNCORK)
+		expect(held.tilts == free.tilts, "a bottle refill ignores DOWN (refill_time %.1f)" % refill_time)
+		expect(absf(held.refill_s - want_s) < 0.1, "a bottle refill takes %.1f s once upright (took %.2f s)" % [want_s, held.refill_s])
+		eq(_events.vanished, 2, "the empty bottle vanishes once per refill (refill_time %.1f)" % refill_time)
+		eq(_events.popped, 2, "the new bottle is uncorked once per refill (refill_time %.1f)" % refill_time)
+		expect(is_equal_approx(pourer.volume, pourer.full_volume) and not pourer.corked and not pourer.refilling, "a full, open bottle after the refill")
+		expect(pourer.position == home, "back at home after the refill (%s)" % pourer.position)
+	GameState.stats.refill_time = 1.0
 
 
 func _tilt_after_hold(pourer: Pourer, seconds: float) -> float:

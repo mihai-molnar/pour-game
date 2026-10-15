@@ -36,9 +36,7 @@ func _process(_delta: float) -> bool:
 	var gs: Node = root.get_node("GameState")
 	var failed := 0
 	for n in names:
-		gs.stats = gs.BASE_STATS.duplicate()
-		gs.coins = 0
-		gs.round_number = 1
+		gs.reset_session(1)
 		var errors_before := counter.errors
 		var script: Script = load(DIR + "check_%s.gd" % n)
 		var check: Node = script.new() if script != null and script.can_instantiate() else null

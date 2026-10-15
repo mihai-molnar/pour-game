@@ -1,7 +1,10 @@
 # Pour Game — Slice 2: Second Drink and Mixed Rounds Design
 
 Date: 2026-10-15
-Status: Draft — awaiting review
+Status: Implemented (2026-10-15), awaiting playtest — plan
+`docs/superpowers/plans/2026-10-15-second-drink.md`; wine pour values,
+popup position and cork colour amended to the tuned build (see Wine,
+Refill and Components)
 
 ## Overview
 
@@ -59,8 +62,13 @@ liquid and `Palette.WINE_LIGHT` (`#e43b44`) for the highlight.
   lip (the node origin) is the top-left of the neck's mouth. About 150 px
   long overall, holding about 2.7 glasses. Walls tinted dark green
   (`Palette.BOTTLE`, `#265c42`) through the new `DrinkDef.pourer_glass_color`;
-  the pitcher keeps today's frost walls. Flow may be slower than the pitcher
-  (narrow neck) — set by tuning.
+  the pitcher keeps today's frost walls. Flow is slower than the pitcher
+  (narrow neck). Tuned values: `pour_tilt_speed_deg` 5, `max_flow` 1000,
+  `stream_speed_k` 3 — the line is reached with a ~2.05 s hold (water 3.0),
+  about 29 % of the target lands after release, nothing spills, and near the
+  line the fill moves 12 % per 0.2 s of hold (water ~10 %). The last figure
+  was added as a tuning bound during implementation: earlier values hit the
+  targets below but left a ~0.05 s PERFECT window.
 - **Held, not standing:** a bottle standing upright beside the glass can't
   get its spout over the opening (the neck is in the middle of the bottle),
   so it is held tipped at 55° above and to the right of the glass, its mouth
@@ -184,7 +192,8 @@ faster-refill upgrade shortens both.
   2. A new, corked bottle arrives from the right (`ARRIVE_TIME`).
   3. The cork works its way out: the bottle wiggles with growing intensity
      for `max(refill_time − ARRIVE_TIME, 0.1)` s (0.7 s at the default), then
-     pops — the cork (a 4×3 px brown block) flies out along the neck and
+     pops — the cork (a 4×3 px `Palette.BROWN` block; `CLAY` matches the
+     brick wall) flies out along the neck and
      falls off-screen, with a few droplets of spray. REFILLING ends at the
      pop.
 - **Drink change and round start:** a bottle also arrives corked but pops
@@ -200,7 +209,7 @@ faster-refill upgrade shortens both.
 - `@export var pourer_glass_color := Color(Palette.FROST, 0.1)` — the
   pourer's glass: rgb tints it, alpha is the body's tint strength (walls 3×,
   capped at 1). The default reproduces today's pitcher exactly; wine uses
-  `Palette.BOTTLE` at 0.35 (solid green walls).
+  `Palette.BOTTLE` at 0.2 (walls 0.6; at 0.35 the wine inside read brown).
 - `@export_range(0, 90) var pourer_rest_deg := 0.0` — the angle the pourer is
   held at when not pouring (see Wine).
 - `enum RefillStyle { IN_PLACE, NEW_BOTTLE }` and
@@ -228,7 +237,8 @@ Changed:
   drawing, the `NEW_BOTTLE` refill sequence, the lean, `pourer_glass_color`.
 - `main.gd`: picks drinks and triggers arrivals on serve and at round start
   (replacing the swap code); the last-call summary delay; the unlock banner;
-  `--seed=N`; `--sweep=<id>` loads `res://drinks/<id>.tres`.
+  `--seed=N`; `--sweep=<id>` loads `res://drinks/<id>.tres`; `POPUP_POS`
+  moved up 20 px (y 148) so result popups clear the held bottle's neck.
 - `autopilot.gd`: a release share per drink id (wine needs an earlier
   release; value from the sweep).
 - `tools/run_check.gd`: calls `GameState.reset_session()`.
