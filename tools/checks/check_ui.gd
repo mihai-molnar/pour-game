@@ -48,5 +48,10 @@ func run() -> void:
 	space.physical_keycode = KEY_SPACE
 	space.pressed = true
 	summary._unhandled_input(space)
+	eq(pressed[0] == false and summary.visible, true, "Space right after show_results is ignored (input lock)")
+	summary._next()
+	eq(pressed[0] == false and summary.visible, true, "the button is locked too")
+	summary.input_lock = 0.0
+	summary._unhandled_input(space)
 	eq(pressed[0], true, "Space on the summary emits next_pressed")
 	eq(summary.visible, false, "...and hides it")

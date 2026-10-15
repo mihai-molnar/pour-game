@@ -8,6 +8,11 @@ signal next_pressed
 const FONT := preload("res://fonts/PressStart2P-Regular.ttf")
 const SCREEN_W := 640.0
 
+## Seconds after show_results during which Space and the button are ignored, so
+## a stray press from the last serve doesn't skip the results.
+var input_lock := 0.5
+var _shown_at_msec := 0
+
 var _title: Label
 var _body: Label
 var _button: Button
@@ -67,7 +72,12 @@ func show_results(round_number: int, stats: Dictionary, total_coins: int) -> voi
 	for row in rows:
 		lines.append("%-12s%6s" % row)
 	_body.text = "\n".join(lines)
+	_shown_at_msec = Time.get_ticks_msec()
 	visible = true
+
+
+func _locked() -> bool:
+	return (Time.get_ticks_msec() - _shown_at_msec) / 1000.0 < input_lock
 
 
 func hide_results() -> void:
@@ -84,9 +94,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_SPACE:
 		get_viewport().set_input_as_handled()
-		_next()
+		if not _locked():
+			_next()
 
 
 func _next() -> void:
+	if _locked():
+		return
 	visible = false
 	next_pressed.emit()
