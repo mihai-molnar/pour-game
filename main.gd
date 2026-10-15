@@ -1,23 +1,25 @@
 class_name Main
 extends Node2D
-## Slice 1 round loop: INTRO → PLAYING → LAST_CALL → SUMMARY (see
-## docs/superpowers/specs/2026-10-15-round-loop-design.md). All round logic
-## advances only in tick(dt, hold), so check scripts can fast-forward it
-## headless (`manual = true`); tweens are used for HUD visuals only.
+## The round loop: INTRO → PLAYING → LAST_CALL → SUMMARY, each glass a random
+## drink you own (see docs/superpowers/specs/2026-10-15-round-loop-design.md
+## and 2026-10-15-second-drink-design.md). Glasses and pourers arrive by
+## sliding in. All round logic advances only in tick(dt, hold), so check
+## scripts can fast-forward it headless (`manual = true`); tweens are used for
+## HUD visuals only.
 ##
 ## Dev flags (after `--`):
-##   --sweep[=drink_id]   headless tuning table (pourer full and half full), then quit
+##   --sweep[=drink_id]   headless tuning table for that drink (default water), pourer full and half full, then quit
 ##   --autoplay           the Autopilot plays: pours, serves, starts the next round
+##   --seed=N             seed the drink picks so a run repeats
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
 ##   --quit=S             quit after S seconds
 
 enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY }
 
 const GLASS_POS := Vector2(256, 280)
-const OFFSCREEN_X := -40.0
 const INTRO_TIME := 1.5
-const SWAP_OUT_TIME := 0.35
-const SWAP_IN_TIME := 0.5
+## The last-call glass vanishes this long before the summary appears, so its popup reads.
+const SUMMARY_DELAY := 0.35
 const LAST_CALL_IDLE := 3.0
 ## A glass counts as touched once it holds this share of its capacity; less can't be served.
 const ACTIVE_SHARE := 0.01
@@ -29,6 +31,7 @@ const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
 @onready var glass: Glass = $Glass
 @onready var pourer: Pourer = $Pourer
 @onready var stream: Stream = $Stream
+@onready var effects: Effects = $Effects
 @onready var hud: Hud = $Hud
 @onready var summary: RoundSummary = $RoundSummary
 
@@ -37,17 +40,17 @@ var manual := false
 var phase := Phase.INTRO
 var phase_time := 0.0
 var time_left := 0.0
+## The current glass's drink; the pourer always matches it.
 var drink: DrinkDef
 var streak_steps := 0
 ## This round's tallies: served, perfects, best_steps, coins.
 var round_stats := {}
-## Every glass scored this round (Scoring.score results).
+## Every glass scored this round (Scoring.score results plus "drink", its id).
 var results: Array[Dictionary] = []
 
 var _serve_queued := false
-var _swap_t := -1.0  # < 0 when no glass swap is running
-var _swap_reset := false
-var _swap_brings_glass := true
+var _summary_in := -1.0  # >= 0 while the last-call glass's puff plays before the summary
+var _force_next: DrinkDef  # the next glass's drink when it isn't random (a just-unlocked drink)
 var _idle := 0.0
 var _autopilot: Autopilot
 var _clock := 0.0
@@ -59,14 +62,15 @@ var _shot_index := 0
 
 
 func _ready() -> void:
-	drink = GameState.owned_drinks[0]
-	glass.setup(drink)
-	stream.set_drink(drink)
-	pourer.setup(drink)
-	pourer.position = GLASS_POS + drink.pourer_offset
 	hud.place_streak(STREAK_POS)
 	summary.next_pressed.connect(next_round)
+	glass.landed.connect(_on_landed)
+	pourer.landed.connect(_on_landed)
+	pourer.vanished.connect(effects.puff)
+	pourer.popped.connect(effects.cork)
 	var args := _parse_args()
+	if args.has("seed"):
+		GameState.rng.seed = int(args["seed"])
 	if args.has("sweep"):
 		_sweep(args["sweep"])
 		get_tree().quit()
@@ -96,14 +100,17 @@ func start_round() -> void:
 	round_stats = {"served": 0, "perfects": 0, "best_steps": 0, "coins": 0}
 	results.clear()
 	_serve_queued = false
-	_swap_t = -1.0
+	_summary_in = -1.0
 	_idle = 0.0
 	stream.clear()
-	glass.position = GLASS_POS
-	glass.reset()
-	pourer.reset()
+	var unlocked := GameState.unlock_for_round(GameState.round_number)
+	_force_next = unlocked
+	drink = _pick_drink()
+	stream.set_drink(drink)
+	glass.arrive(drink, GLASS_POS)
+	pourer.arrive(drink, GLASS_POS + drink.pourer_offset)
 	summary.hide_results()
-	hud.show_banner("ROUND %d" % GameState.round_number, INTRO_TIME)
+	hud.show_banner(Hud.round_banner(GameState.round_number, unlocked), INTRO_TIME)
 	_refresh_hud()
 
 
@@ -114,8 +121,18 @@ func next_round() -> void:
 	start_round()
 
 
+## The next glass's drink: a just-unlocked drink first, otherwise any owned drink.
+func _pick_drink() -> DrinkDef:
+	if _force_next != null:
+		var d := _force_next
+		_force_next = null
+		return d
+	var owned := GameState.owned_drinks
+	return owned[GameState.rng.randi_range(0, owned.size() - 1)]
+
+
 func is_swapping() -> bool:
-	return _swap_t >= 0.0
+	return glass.is_arriving() or pourer.is_arriving()
 
 
 func is_serving_phase() -> bool:
@@ -123,7 +140,7 @@ func is_serving_phase() -> bool:
 
 
 func request_serve() -> void:
-	if not is_serving_phase() or is_swapping() or pourer.refilling:
+	if not is_serving_phase() or is_swapping() or pourer.is_busy():
 		return
 	_serve_queued = true
 
@@ -162,7 +179,14 @@ func tick(dt: float, hold: bool) -> void:
 	if phase == Phase.INTRO and phase_time >= INTRO_TIME:
 		_enter(Phase.PLAYING)
 	_step_sim(dt, hold)
-	_step_swap(dt)
+	effects.step(dt)
+	if _summary_in >= 0.0:
+		_summary_in -= dt
+		if _summary_in <= 0.0:
+			_summary_in = -1.0
+			_finish_round()
+		_refresh_hud()
+		return
 	if phase == Phase.PLAYING:
 		time_left = maxf(time_left - dt, 0.0)
 		if time_left <= 0.0:
@@ -170,7 +194,7 @@ func tick(dt: float, hold: bool) -> void:
 	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty():
 		_serve()
 	if phase == Phase.LAST_CALL and not is_swapping():
-		if hold or pourer.is_pouring() or not stream.is_empty():
+		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty():
 			_idle = 0.0
 		else:
 			_idle += dt
@@ -206,6 +230,8 @@ func _on_time_up() -> void:
 		_finish_round()
 
 
+## Scores the glass; it vanishes and (unless it's last call) the next glass
+## arrives — with the other pourer when the drink changes.
 func _serve() -> void:
 	_serve_queued = false
 	if glass.volume < glass.capacity * ACTIVE_SHARE:
@@ -213,6 +239,7 @@ func _serve() -> void:
 			_finish_round()
 		return
 	var r := Scoring.score(glass.volume, glass.target, glass.spilled > 0.5, streak_steps, drink, GameState.stats)
+	r["drink"] = drink.id
 	streak_steps = r.steps
 	results.append(r)
 	round_stats.served += 1
@@ -222,41 +249,29 @@ func _serve() -> void:
 	round_stats.coins += r.coins
 	GameState.coins += r.coins
 	hud.popup(r, POPUP_POS)
-	_swap_t = 0.0
-	_swap_reset = false
-	_swap_brings_glass = phase == Phase.PLAYING
+	effects.puff(glass.center_global())
+	if phase == Phase.LAST_CALL:
+		glass.vanish()
+		_summary_in = SUMMARY_DELAY
+		return
+	var next := _pick_drink()
+	if next != drink:
+		effects.puff(pourer.center_global())
+		pourer.arrive(next, GLASS_POS + next.pourer_offset)
+		stream.set_drink(next)
+	drink = next
+	glass.arrive(drink, GLASS_POS)
 
 
-## Slides the served glass out, empties it off-screen, and (unless the round
-## is ending) slides it back in as the next glass.
-func _step_swap(dt: float) -> void:
-	if _swap_t < 0.0:
-		return
-	_swap_t += dt
-	if _swap_t < SWAP_OUT_TIME:
-		glass.position.x = Tween.interpolate_value(GLASS_POS.x, OFFSCREEN_X - GLASS_POS.x, _swap_t, SWAP_OUT_TIME, Tween.TRANS_QUAD, Tween.EASE_IN)
-		return
-	if not _swap_reset:
-		_swap_reset = true
-		glass.position.x = OFFSCREEN_X
-		if not _swap_brings_glass:
-			_swap_t = -1.0
-			if phase == Phase.LAST_CALL:
-				_finish_round()
-			return
-		glass.reset()
-	var t_in := _swap_t - SWAP_OUT_TIME
-	if t_in >= SWAP_IN_TIME:
-		glass.position.x = GLASS_POS.x
-		_swap_t = -1.0
-		return
-	glass.position.x = Tween.interpolate_value(OFFSCREEN_X, GLASS_POS.x - OFFSCREEN_X, t_in, SWAP_IN_TIME, Tween.TRANS_BACK, Tween.EASE_OUT)
+## Dust only where an arrival lands on the counter (a held bottle lands in mid-air).
+func _on_landed(at: Vector2) -> void:
+	if at.y >= GLASS_POS.y - 1.0:
+		effects.dust(at)
 
 
 func _finish_round() -> void:
 	_enter(Phase.SUMMARY)
 	_serve_queued = false
-	_swap_brings_glass = false
 	summary.show_results(GameState.round_number, round_stats, GameState.coins)
 
 
@@ -298,10 +313,18 @@ func _refresh_hud() -> void:
 ## how much arrived after DOWN was released (the overshoot), and settle time.
 func _sweep(drink_id: String) -> void:
 	var dt := 1.0 / 60.0
-	var d: DrinkDef = GameState.owned_drinks[0]
-	for owned in GameState.owned_drinks:
-		if String(owned.id) == drink_id:
-			d = owned
+	var d: DrinkDef = GameState.WATER
+	if drink_id != "":
+		var path := "res://drinks/%s.tres" % drink_id
+		if not ResourceLoader.exists(path):
+			printerr("no drink %s" % path)
+			return
+		d = load(path)
+	glass.setup(d)
+	glass.place(GLASS_POS)
+	pourer.setup(d)
+	pourer.place(GLASS_POS + d.pourer_offset)
+	stream.set_drink(d)
 	print("%s: glass %d px², line at %d px², pourer full %d px² (%.2f glasses)" % [
 		d.id, glass.capacity, glass.target, pourer.full_volume, pourer.full_volume / glass.target,
 	])

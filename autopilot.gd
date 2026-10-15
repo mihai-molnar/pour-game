@@ -4,8 +4,9 @@ extends RefCounted
 ## until the glass (plus liquid in the air) nears the line, releases early to
 ## allow for the overshoot, then serves once everything has landed.
 
-## Release DOWN when this share of the target is in the glass or the air.
-var release_at := 0.86
+## Release DOWN when this share of the target is in the glass or the air, per
+## drink id — the lower the line, the bigger the overshoot's share of the target.
+var release_at := {&"water": 0.86, &"wine": 0.75}
 var _released := false
 
 
@@ -14,10 +15,11 @@ func decide(main: Main) -> Dictionary:
 	if not main.is_serving_phase() or main.is_swapping():
 		_released = false
 		return out
-	if main.pourer.refilling:
+	if main.pourer.is_busy():
 		return out
+	var share: float = release_at.get(main.drink.id, 0.86)
 	var poured := main.glass.volume + main.stream.in_flight_volume()
-	if not _released and poured < main.glass.target * release_at:
+	if not _released and poured < main.glass.target * share:
 		out.hold = true
 	else:
 		_released = true
