@@ -36,6 +36,9 @@ var _debug_label: Label
 
 
 func _ready() -> void:
+	var drink: DrinkDef = GameState.owned_drinks[0]
+	glass.setup(drink)
+	stream.set_drink(drink)
 	_build_hud()
 	var args := {}
 	for a in OS.get_cmdline_user_args():

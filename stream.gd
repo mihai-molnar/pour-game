@@ -22,6 +22,8 @@ class Parcel:
 	var state := 0  # 0 = above the rim, 1 = inside the glass, 2 = missed it
 
 var spilled := 0.0
+var liquid_color := Palette.WATER
+var liquid_highlight := Palette.WATER_LIGHT
 
 var _parcels: Array[Parcel] = []
 var _droplets: Array[Vector4] = []  # x, y, vx, vy — splash visuals only
@@ -50,6 +52,11 @@ func emit(origin: Vector2, velocity: Vector2, vol: float, dt: float) -> void:
 		vol = _pending
 		_pending = 0.0
 	_spawn(origin, velocity, vol, clampi(int(1.0 + sqrt(flow) / 14.0), 1, 4))
+
+
+func set_drink(d: DrinkDef) -> void:
+	liquid_color = d.liquid_color
+	liquid_highlight = d.liquid_highlight
 
 
 func _spawn(origin: Vector2, velocity: Vector2, vol: float, width: int) -> void:
@@ -131,8 +138,8 @@ func _splash(at: Vector2, p: Parcel) -> void:
 
 
 func _draw() -> void:
-	var body := Color(Palette.WATER, 0.9)
-	var core := Color(Palette.WATER_LIGHT, 0.9)
+	var body := Color(liquid_color, 0.9)
+	var core := Color(liquid_highlight, 0.9)
 	var prev: Parcel = null
 	for p in _parcels:
 		if prev != null and p.tick == prev.tick + 1:
