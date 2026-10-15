@@ -1,0 +1,61 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://main.gd" id="1_main"]
+[ext_resource type="Texture2D" path="res://art/background.png" id="2_bg"]
+[ext_resource type="Script" path="res://glass.gd" id="3_glass"]
+[ext_resource type="Script" path="res://pitcher.gd" id="4_pitcher"]
+[ext_resource type="Script" path="res://stream.gd" id="5_stream"]
+[ext_resource type="Shader" path="res://liquid.gdshader" id="6_liquid"]
+[ext_resource type="Script" path="res://draw_layer.gd" id="7_layer"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_glass"]
+shader = ExtResource("6_liquid")
+shader_parameter/tint = Color(0, 0.6, 0.858824, 1)
+shader_parameter/tint_strength = 0.5
+shader_parameter/refraction_px = 1.0
+shader_parameter/lens_strength = 0.3
+shader_parameter/dither_levels = 4.0
+shader_parameter/highlight = Color(1, 1, 1, 1)
+shader_parameter/highlight_strength = 0.45
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pitcher"]
+shader = ExtResource("6_liquid")
+shader_parameter/tint = Color(0, 0.6, 0.858824, 1)
+shader_parameter/tint_strength = 0.5
+shader_parameter/refraction_px = 1.0
+shader_parameter/lens_strength = 0.25
+shader_parameter/dither_levels = 4.0
+shader_parameter/highlight = Color(1, 1, 1, 1)
+shader_parameter/highlight_strength = 0.35
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="Background" type="Sprite2D" parent="."]
+texture = ExtResource("2_bg")
+centered = false
+
+[node name="Glass" type="Node2D" parent="."]
+position = Vector2(256, 280)
+script = ExtResource("3_glass")
+
+[node name="Liquid" type="Node2D" parent="Glass"]
+material = SubResource("ShaderMaterial_glass")
+script = ExtResource("7_layer")
+
+[node name="Front" type="Node2D" parent="Glass"]
+script = ExtResource("7_layer")
+
+[node name="Stream" type="Node2D" parent="."]
+script = ExtResource("5_stream")
+
+[node name="Pitcher" type="Node2D" parent="."]
+position = Vector2(270, 193)
+script = ExtResource("4_pitcher")
+
+[node name="Liquid" type="Node2D" parent="Pitcher"]
+material = SubResource("ShaderMaterial_pitcher")
+script = ExtResource("7_layer")
+
+[node name="Front" type="Node2D" parent="Pitcher"]
+script = ExtResource("7_layer")

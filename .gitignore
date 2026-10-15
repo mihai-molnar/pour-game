@@ -1,0 +1,9 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Claude Code session data (worktrees, local settings)
+.claude/
+
+# macOS
+.DS_Store
