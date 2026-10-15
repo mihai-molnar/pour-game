@@ -106,6 +106,8 @@ func popup(result: Dictionary, at: Vector2) -> void:
 		text = "SPILLED!"
 	var label := make_label(at - Vector2(100, 0), color)
 	label.size = Vector2(200, 8)
+	label.add_theme_color_override("font_outline_color", Palette.INK)
+	label.add_theme_constant_override("outline_size", 3)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.text = text
 	var tw := create_tween().set_parallel()
