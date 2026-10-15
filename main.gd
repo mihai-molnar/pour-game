@@ -15,6 +15,7 @@ const SHOT_TIMES := [0.5, 1.6, 2.6, 3.15, 3.35, 3.6, 4.0, 5.0, 6.2]
 @onready var glass: Glass = $Glass
 @onready var pourer: Pourer = $Pourer
 @onready var stream: Stream = $Stream
+@onready var hud: Hud = $Hud
 
 var coins := 0
 var served := 0
@@ -29,11 +30,6 @@ var _quit_at := INF
 var _shot_prefix := ""
 var _shot_index := 0
 
-var _hud: Control
-var _coins_label: Label
-var _status_label: Label
-var _debug_label: Label
-
 
 func _ready() -> void:
 	var drink: DrinkDef = GameState.owned_drinks[0]
@@ -41,7 +37,7 @@ func _ready() -> void:
 	stream.set_drink(drink)
 	pourer.setup(drink)
 	pourer.position = Vector2(GLASS_X, 280.0) + drink.pourer_offset
-	_build_hud()
+	hud.place_streak(Vector2(184, 196))
 	var args := {}
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
@@ -69,7 +65,7 @@ func _physics_process(dt: float) -> void:
 		_serve_queued = true
 	if _serve_queued and not _swapping and not pourer.is_pouring() and stream.is_empty():
 		_serve()
-	_update_hud()
+	_refresh_hud()
 	if _time >= _quit_at:
 		get_tree().quit()
 
@@ -98,7 +94,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if not _swapping:
 				_serve_queued = true
 		KEY_F1:
-			_debug_label.visible = not _debug_label.visible
+			hud.toggle_debug()
 		KEY_R:
 			coins = 0
 			served = 0
@@ -117,7 +113,7 @@ func _serve() -> void:
 	_streak_steps = result.steps
 	coins += result.coins
 	served += 1
-	_popup(result)
+	hud.popup(result, Vector2(GLASS_X, 168))
 	var tw := create_tween()
 	tw.tween_property(glass, "position:x", -40.0, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.tween_callback(glass.reset)
@@ -125,71 +121,18 @@ func _serve() -> void:
 	tw.tween_callback(func() -> void: _swapping = false)
 
 
-func _popup(result: Dictionary) -> void:
-	var pct := roundi(result.error * 100.0)
-	var text: String
-	var color: Color
-	if result.band == Scoring.PERFECT:
-		text = "PERFECT! +%d" % result.coins
-		color = Palette.GOLD
-	elif result.band == Scoring.GOOD:
-		text = "GOOD %+d%% +%d" % [pct, result.coins]
-		color = Palette.GREEN
-	elif result.band == Scoring.SPILL:
-		text = "SPILLED!"
-		color = Palette.RED
-	else:
-		text = "MISS %+d%%" % pct
-		color = Palette.RED
-	var label := _label(Vector2(GLASS_X - 100, 168), color)
-	label.size = Vector2(200, 8)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.text = text
-	var tw := create_tween().set_parallel()
-	tw.tween_property(label, "position:y", label.position.y - 24.0, 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-	tw.tween_property(label, "modulate:a", 0.0, 0.5).set_delay(0.9)
-	tw.chain().tween_callback(label.queue_free)
-
-
-func _build_hud() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	_hud = Control.new()
-	_hud.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var theme := Theme.new()
-	theme.default_font = load("res://fonts/PressStart2P-Regular.ttf")
-	theme.default_font_size = 8
-	_hud.theme = theme
-	layer.add_child(_hud)
-	_coins_label = _label(Vector2(8, 8), Palette.GOLD)
-	_status_label = _label(Vector2(8, 344), Palette.FROST)
-	_debug_label = _label(Vector2(8, 24), Palette.FROST)
-
-
-func _label(pos: Vector2, color: Color) -> Label:
-	var l := Label.new()
-	l.position = pos
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_shadow_color", Palette.INK)
-	l.add_theme_constant_override("shadow_offset_x", 1)
-	l.add_theme_constant_override("shadow_offset_y", 1)
-	l.add_theme_constant_override("line_spacing", 4)
-	_hud.add_child(l)
-	return l
-
-
-func _update_hud() -> void:
-	_coins_label.text = "COINS %d   GLASSES %d" % [coins, served]
-	_status_label.text = "SERVING..." if _serve_queued else "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG   R: RESET"
-	if _debug_label.visible:
+func _refresh_hud() -> void:
+	hud.set_coins(coins)
+	hud.set_streak(_streak_steps)
+	hud.set_hint("SERVING..." if _serve_queued else "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG   R: RESET")
+	if hud.is_debug_visible():
 		var err := (glass.volume - glass.target) / glass.target * 100.0
-		_debug_label.text = "TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d" % [
+		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d" % [
 			roundi(rad_to_deg(pourer.tilt)), roundi(pourer.flow),
 			roundi(pourer.volume), roundi(pourer.full_volume),
 			roundi(glass.volume), roundi(glass.target), err,
-			stream._parcels.size(),
-		]
+			stream.parcel_count(),
+		])
 
 
 ## Simulates holds of increasing length — with the pourer full, then half

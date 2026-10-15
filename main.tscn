@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://art/background.png" id="2_bg"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://stream.gd" id="5_stream"]
 [ext_resource type="Shader" path="res://liquid.gdshader" id="6_liquid"]
 [ext_resource type="Script" path="res://draw_layer.gd" id="7_layer"]
+[ext_resource type="Script" path="res://hud.gd" id="8_hud"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glass"]
 shader = ExtResource("6_liquid")
@@ -59,3 +60,6 @@ script = ExtResource("7_layer")
 
 [node name="Front" type="Node2D" parent="Pourer"]
 script = ExtResource("7_layer")
+
+[node name="Hud" type="CanvasLayer" parent="."]
+script = ExtResource("8_hud")

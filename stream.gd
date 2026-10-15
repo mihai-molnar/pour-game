@@ -73,6 +73,10 @@ func is_empty() -> bool:
 	return _parcels.is_empty() and _pending <= 0.0
 
 
+func parcel_count() -> int:
+	return _parcels.size()
+
+
 func clear() -> void:
 	_parcels.clear()
 	_pending = 0.0
