@@ -1,7 +1,7 @@
 # Pour Game — Slice 2: Second Drink and Mixed Rounds Design
 
 Date: 2026-10-15
-Status: Implemented (2026-10-15), awaiting playtest — plan
+Status: Implemented, playtested ("looks good") and merged (2026-10-15) — plan
 `docs/superpowers/plans/2026-10-15-second-drink.md`; wine pour values,
 popup position and cork colour amended to the tuned build (see Wine,
 Refill and Components)
