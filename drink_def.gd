@@ -3,7 +3,13 @@ extends Resource
 ## Everything that makes a drink a drink: the glass, the container you pour
 ## from, the fill line, the payout and the pour feel. One .tres per drink in
 ## res://drinks/. Shapes are local pixels with y down: the glass origin is its
-## bottom center; the pourer origin is the spout lip (the tilt pivot).
+## bottom center; the pourer origin is the spout lip (the tilt pivot). Pourer
+## shapes are authored upright even when the pourer is held tipped
+## (pourer_rest_deg).
+
+## IN_PLACE: the pourer fills up where it stands (a pitcher). NEW_BOTTLE: the
+## empty one is replaced by a new, corked one that gets uncorked.
+enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 
 @export var id: StringName
 @export var display_name := ""
@@ -27,11 +33,19 @@ extends Resource
 @export var pourer_outer := PackedVector2Array()
 ## Optional handle polyline (empty for bottles).
 @export var pourer_handle := PackedVector2Array()
+## The pourer's glass: rgb tints it, alpha is the body's tint strength (the
+## walls get 3× that, capped at 1).
+@export var pourer_glass_color := Color(Palette.FROST, 0.1)
 ## "Full" as a share of the pourer interior (a brim-full pitcher would pour at the slightest tilt).
 @export_range(0.1, 0.99) var pourer_full_fraction := 0.9
 @export var spout_dir := Vector2(-1.0, -0.25)
 ## Spout lip position relative to the glass origin with the pourer at rest.
 @export var pourer_offset := Vector2(14, -87)
+## The angle (°) it is held at when not pouring: 0 = standing upright; a bottle
+## is held tipped over the glass. Tilt and max_tilt_deg count from here.
+@export_range(0.0, 90.0) var pourer_rest_deg := 0.0
+## How it comes back full once it runs dry.
+@export var refill_style := RefillStyle.IN_PLACE
 
 @export_group("Tilt")
 ## Tilt speed (°/s) while DOWN is held and the liquid hasn't reached the lip yet.

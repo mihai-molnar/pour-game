@@ -14,6 +14,10 @@ const WATER := Color("0099db")
 const WATER_LIGHT := Color("2ce8f5")
 const WATER_DEEP := Color("124e89")
 
+const WINE := Color("a22633")
+const WINE_LIGHT := Color("e43b44")
+const BOTTLE := Color("265c42")
+
 const GOLD := Color("feae34")
 const GREEN := Color("63c74d")
 const RED := Color("e43b44")
