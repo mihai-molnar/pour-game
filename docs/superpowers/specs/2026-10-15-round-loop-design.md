@@ -1,7 +1,9 @@
 # Pour Game — Slice 1: Round Loop Design
 
 Date: 2026-10-15
-Status: Draft — awaiting review
+Status: Implemented, playtested and merged (2026-10-15) — plan
+`docs/superpowers/plans/2026-10-15-round-loop.md`; dev flags amended to the
+implemented set (see `main.gd` under Components)
 
 ## Overview
 

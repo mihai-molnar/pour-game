@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A side-view incremental pouring game in Godot 4.5 (Forward Plus), hosted at https://github.com/mihai-molnar/pour-game (branch `master`; the local folder is `pour-prototype/`). Pourer on the right, glass on the left: hold DOWN to tilt and pour, release and the pourer swings back upright while liquid already in the air (plus a little from the lip) keeps landing. The goal is to fill the glass to a fill line drawn on it — close to the line pays coins, exact pays the most, overflowing pays nothing.
 
-**Current state: slice 1 (the round loop) is implemented** — spec `docs/superpowers/specs/2026-10-15-round-loop-design.md`, plan in `docs/superpowers/plans/`. A round is 30 s: serve as many glasses as you can, each scored PERFECT/GOOD/MISS/SPILL, with a streak multiplier (x1 to x3), a "LAST CALL!" phase when the timer hits 0:00 (liquid in the air still lands and the last glass is auto-served), then a summary screen and the next round. One drink (water, `drinks/water.tres`), one tumbler, a coin counter that carries across rounds. No shop and no other drinks yet.
+**Current state: slice 1 (the round loop) is implemented, playtested and merged** (2026-10-15; user verdict "all good", no changes requested) — spec `docs/superpowers/specs/2026-10-15-round-loop-design.md`, plan in `docs/superpowers/plans/`. A round is 30 s: serve as many glasses as you can, each scored PERFECT/GOOD/MISS/SPILL, with a streak multiplier (x1 to x3), a "LAST CALL!" phase when the timer hits 0:00 (liquid in the air still lands and the last glass is auto-served), then a summary screen and the next round. One drink (water, `drinks/water.tres`), one tumbler, a coin counter that carries across rounds. No shop and no other drinks yet.
 
 **Next slices:** second drink + mixed rounds, then the between-rounds upgrade shop (the `GameState.stats` seam is already in place for it).
 
 **Known deferred work:**
-- Auto-refill triggers only below 1 % of full, so a near-empty pourer must be tipped far before it refills — playtest question.
+- Playtest-confirmed as fine for now (revisit only if it comes up again): auto-refill triggers only below 1 % of full, so a near-empty pourer must be tipped far before it refills; Space is ignored while refilling.
 - `--sweep=<id>` only relabels the header; it always simulates `owned_drinks[0]` (must simulate the chosen drink once there is a second drink).
 - `Scoring.base_coins` divides by `good_tol - perfect_tol` unguarded; the slice 3 shop must keep them apart.
 - `glass.gd` `_draw_fill_line`'s left tick width assumes the walls slope outward going up; it breaks for glasses narrowing toward the rim (slice 2).
