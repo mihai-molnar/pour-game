@@ -222,7 +222,8 @@ func _glass_active() -> bool:
 
 
 func _on_time_up() -> void:
-	if not is_swapping() and _glass_active():
+	# Only an arriving glass is empty; a bottle refill can arrive with the glass mid-pour.
+	if not glass.is_arriving() and _glass_active():
 		_enter(Phase.LAST_CALL)
 		_idle = 0.0
 		hud.show_banner("LAST CALL!", 1.5)

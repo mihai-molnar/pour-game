@@ -17,6 +17,7 @@ func run() -> void:
 	_last_call_auto_serve()
 	_last_call_held_down_while_refilling_does_not_serve()
 	_last_call_waits_for_a_refill()
+	_time_up_during_a_bottle_refill()
 	_last_call_tiny_pour_still_ends()
 	_time_up_untouched_glass()
 	_time_up_mid_swap()
@@ -180,6 +181,23 @@ func _last_call_waits_for_a_refill() -> void:
 	expect(main.results.size() == served + 1, "...then serves 3 s after the refill")
 	expect(main.phase == Main.Phase.SUMMARY, "...and the round ends")
 	GameState.stats = GameState.BASE_STATS.duplicate()
+
+
+## 0:00 while a replacement bottle slides in: the glass is still on the
+## counter, so it gets its last call (the bottle refill finishes first).
+func _time_up_during_a_bottle_refill() -> void:
+	_fresh(2, 3)
+	_run(Main.INTRO_TIME + 0.5)  # the opening wine bottle has arrived and popped its cork
+	main.glass.receive(Main.GLASS_POS.x, main.glass.target * 0.8, 0.0)
+	main.pourer.volume = main.pourer.full_volume * 0.001
+	main.tick(DT, false)  # at rest and dry: the empty bottle vanishes, a new one starts arriving
+	expect(main.pourer.refilling and main.pourer.is_arriving(), "the replacement bottle is arriving")
+	main.time_left = DT * 0.5
+	main.tick(DT, false)
+	expect(main.phase == Main.Phase.LAST_CALL, "0:00 while the new bottle arrives still gives the glass its last call (phase %s)" % Main.Phase.keys()[main.phase])
+	_run(6.0)
+	expect(main.results.size() == 1, "the part-filled glass is scored")
+	expect(main.phase == Main.Phase.SUMMARY, "...and the round ends")
 
 
 func _last_call_tiny_pour_still_ends() -> void:
