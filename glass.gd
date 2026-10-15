@@ -6,6 +6,9 @@ extends Node2D
 ## pixel) that the stream and glass motion excite; waves are visual only — the
 ## volume is the gameplay truth. The fill line is fixed per drink
 ## (fill_fraction × capacity) and the ±good_tol band is drawn beside it.
+## A new glass arrives by sliding in from the left (arrive()); the lean only
+## turns the Liquid and Front layers, never this node, so landing liquid and
+## the rim/opening helpers never see it.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -17,6 +20,12 @@ extends Node2D
 ## Slosh from the glass sliding (liquid lags the motion).
 @export var move_slosh := 0.0012
 
+## Emitted when an arrival stops sliding; `at` = the foot corner it tips over (global).
+signal landed(at: Vector2)
+
+## Where an arriving glass starts: fully off-screen left.
+const OFFSCREEN_X := -40.0
+
 var def: DrinkDef
 var interior := PackedVector2Array()
 var outer := PackedVector2Array()
@@ -24,6 +33,8 @@ var volume := 0.0
 var target := 0.0
 var spilled := 0.0
 var capacity := 0.0
+## Where it rests (in Main's space).
+var home := Vector2.ZERO
 
 var _x0 := 0
 var _y0 := 0
@@ -40,6 +51,8 @@ var _bubbles: Array[Vector3] = []  # x, y (local), rise speed
 var _drips: Array[Vector3] = []    # side (-1/1), y (local), speed
 var _last_x := 0.0
 var _last_vx := 0.0
+var _arrive_t := -1.0  # < 0 when not arriving (covers the slide and the wobble)
+var _pivot := Vector2.ZERO
 
 @onready var _liquid: DrawLayer = $Liquid
 @onready var _front: DrawLayer = $Front
@@ -80,6 +93,71 @@ func reset() -> void:
 	_wave_v.fill(0.0)
 	_bubbles.clear()
 	_drips.clear()
+
+
+## Sets the glass up for `d` (empty), puts it off-screen left and starts
+## sliding it to `at`.
+func arrive(d: DrinkDef, at: Vector2) -> void:
+	setup(d)
+	home = at
+	position = Vector2(OFFSCREEN_X, at.y)
+	visible = true
+	_last_x = position.x
+	_last_vx = 0.0
+	_pivot = Arrival.pivot(outer, 0.0, 1.0)
+	_arrive_t = 0.0
+	_apply_lean(0.0)
+
+
+## Puts the glass at `at` at once, no arrival — for the sweep and checks.
+func place(at: Vector2) -> void:
+	home = at
+	position = at
+	visible = true
+	_last_x = at.x
+	_last_vx = 0.0
+	_arrive_t = -1.0
+	_apply_lean(0.0)
+
+
+## The served glass disappears (Main leaves a puff where it was).
+func vanish() -> void:
+	visible = false
+	_arrive_t = -1.0
+	_apply_lean(0.0)
+
+
+## True while sliding in; the wobble after it doesn't count.
+func is_arriving() -> bool:
+	return _arrive_t >= 0.0 and _arrive_t < Arrival.ARRIVE_TIME
+
+
+func center_global() -> Vector2:
+	var box := Rect2(outer[0], Vector2.ZERO)
+	for p in outer:
+		box = box.expand(p)
+	return to_global(box.get_center())
+
+
+func _step_arrival(dt: float) -> void:
+	if _arrive_t < 0.0:
+		return
+	var was_sliding := is_arriving()
+	_arrive_t += dt
+	position.x = home.x + Arrival.offset(_arrive_t, OFFSCREEN_X - home.x)
+	if was_sliding and not is_arriving():
+		landed.emit(to_global(_pivot))
+	_apply_lean(Arrival.lean(_arrive_t, 1.0))
+	if Arrival.done(_arrive_t):
+		_arrive_t = -1.0
+		_apply_lean(0.0)
+
+
+## Turns the drawing by `angle` about the arrival pivot (the node stays put).
+func _apply_lean(angle: float) -> void:
+	for layer: Node2D in [_liquid, _front]:
+		layer.rotation = angle
+		layer.position = _pivot - _pivot.rotated(angle)
 
 
 func _rasterize() -> void:
@@ -139,6 +217,23 @@ func target_y() -> float:
 func band_levels() -> Vector2:
 	var tol: float = GameState.stats.good_tol
 	return Vector2(roundf(level_for(target * (1.0 + tol))), roundf(level_for(target * (1.0 - tol))))
+
+
+## Local x of the band bracket's spine: 4 px left of the outer wall's leftmost
+## point across the band rows, so it also clears bowls that narrow toward the rim.
+func bracket_x() -> int:
+	var band := band_levels()
+	var left := INF
+	for y in range(int(band.x), int(band.y) + 2):
+		left = minf(left, outer_x_at(float(y)).x)
+	return floori(left) - 4
+
+
+## The fill line's left tick as local x (start, end): from the bracket's spine
+## to 2 px short of the wall at the line.
+func left_tick() -> Vector2i:
+	var ty := roundi(_target_y)
+	return Vector2i(bracket_x(), floori(outer_x_at(float(ty) + 0.5).x) - 2)
 
 
 func rim_y_world() -> float:
@@ -211,6 +306,7 @@ func receive(x_world: float, vol: float, speed: float) -> void:
 
 
 func step(dt: float) -> void:
+	_step_arrival(dt)
 	_level = level_for(volume)
 	_mat.set_shader_parameter("surface_y", _level)
 
@@ -228,7 +324,8 @@ func step(dt: float) -> void:
 			var l := _wave_h[maxi(i - 1, 0)]
 			var r := _wave_h[mini(i + 1, n - 1)]
 			var acc := c2 * (l + r - 2.0 * _wave_h[i]) - wave_spring * _wave_h[i] - wave_damp * _wave_v[i]
-			acc -= ax * move_slosh * (i - mid)
+			if volume >= 0.5:  # an empty glass has nothing to slosh (arrivals would leave waves)
+				acc -= ax * move_slosh * (i - mid)
 			_wave_v[i] += acc * sdt
 		for i in n:
 			_wave_h[i] = clampf(_wave_h[i] + _wave_v[i] * sdt, -wave_max, wave_max)
@@ -309,7 +406,7 @@ func _draw_band(ci: CanvasItem) -> void:
 	var band := band_levels()
 	var y_top := int(band.x)
 	var y_bot := int(band.y)
-	var x := floori(outer_x_at(float(y_top)).x) - 4
+	var x := bracket_x()
 	var h := y_bot - y_top + 1
 	ci.draw_rect(Rect2(x - 1, y_top - 1, 3, h + 2), Palette.INK)
 	ci.draw_rect(Rect2(x - 1, y_top - 1, 5, 3), Palette.INK)
@@ -331,11 +428,10 @@ func _draw_fill_line(ci: CanvasItem) -> void:
 	var width := _row_right[r] - left + 1
 	ci.draw_rect(Rect2(left, ty - 1, width, 3), Palette.INK)
 	ci.draw_rect(Rect2(left, ty, width, 1), Palette.WHITE)
+	var tick := left_tick()
+	ci.draw_rect(Rect2(tick.x - 1, ty - 1, tick.y - tick.x + 2, 3), Palette.INK)
+	ci.draw_rect(Rect2(tick.x, ty, tick.y - tick.x, 1), Palette.WHITE)
 	var walls := outer_x_at(float(ty) + 0.5)
-	var bracket_x := floori(outer_x_at(band_levels().x).x) - 4
-	var left_end := floori(walls.x) - 2
-	ci.draw_rect(Rect2(bracket_x - 1, ty - 1, left_end - bracket_x + 2, 3), Palette.INK)
-	ci.draw_rect(Rect2(bracket_x, ty, left_end - bracket_x, 1), Palette.WHITE)
 	# Short right tick: the pourer's wall sits ~4 px to the right of the glass.
 	var right_start := ceili(walls.y) + 1
 	ci.draw_rect(Rect2(right_start - 1, ty - 1, 4, 3), Palette.INK)
