@@ -77,6 +77,14 @@ func parcel_count() -> int:
 	return _parcels.size()
 
 
+## Liquid poured but not landed yet (px²), including a drop still forming on the lip.
+func in_flight_volume() -> float:
+	var total := _pending
+	for p in _parcels:
+		total += p.vol
+	return total
+
+
 func clear() -> void:
 	_parcels.clear()
 	_pending = 0.0

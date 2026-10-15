@@ -5,6 +5,7 @@ extends CheckBase
 func run() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	add_child(main)
+	main.manual = true
 	var glass: Glass = main.glass
 	var dt := 1.0 / 60.0
 	var checked := 0
