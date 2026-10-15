@@ -8,13 +8,6 @@ extends Node2D
 @export_group("Target")
 @export_range(0.1, 1.0) var target_min := 0.55
 @export_range(0.1, 1.0) var target_max := 0.85
-## |error| within this share of the target = PERFECT.
-@export var perfect_tol := 0.03
-## |error| within this share = GOOD (coins scale down toward the edge).
-@export var good_tol := 0.10
-@export var perfect_coins := 10
-@export var good_coins_max := 8
-@export var good_coins_min := 2
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -217,20 +210,6 @@ func step(dt: float) -> void:
 
 	_liquid.queue_redraw()
 	_front.queue_redraw()
-
-
-## Scores the current fill. Returns {band, coins, error} where error is signed (share of target).
-func evaluate() -> Dictionary:
-	var err := (volume - target) / target
-	var a := absf(err)
-	if spilled > 0.5:
-		return {"band": "SPILL", "coins": 0, "error": err}
-	if a <= perfect_tol:
-		return {"band": "PERFECT", "coins": perfect_coins, "error": err}
-	if a <= good_tol:
-		var t := (a - perfect_tol) / (good_tol - perfect_tol)
-		return {"band": "GOOD", "coins": roundi(lerpf(good_coins_max, good_coins_min, t)), "error": err}
-	return {"band": "MISS", "coins": 0, "error": err}
 
 
 func _wall_x(y: float, side: float) -> float:

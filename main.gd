@@ -18,6 +18,7 @@ const SHOT_TIMES := [0.5, 1.6, 2.6, 3.15, 3.35, 3.6, 4.0, 5.0, 6.2]
 
 var coins := 0
 var served := 0
+var _streak_steps := 0
 var _serve_queued := false
 var _swapping := false
 var _time := 0.0
@@ -96,6 +97,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_R:
 			coins = 0
 			served = 0
+			_streak_steps = 0
 			stream.clear()
 			glass.reset()
 			pitcher.reset()
@@ -106,7 +108,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _serve() -> void:
 	_serve_queued = false
 	_swapping = true
-	var result := glass.evaluate()
+	var result := Scoring.score(glass.volume, glass.target, glass.spilled > 0.5, _streak_steps, GameState.owned_drinks[0], GameState.stats)
+	_streak_steps = result.steps
 	coins += result.coins
 	served += 1
 	_popup(result)
@@ -125,19 +128,18 @@ func _popup(result: Dictionary) -> void:
 	var pct := roundi(result.error * 100.0)
 	var text: String
 	var color: Color
-	match result.band:
-		"PERFECT":
-			text = "PERFECT! +%d" % result.coins
-			color = Palette.GOLD
-		"GOOD":
-			text = "GOOD %+d%% +%d" % [pct, result.coins]
-			color = Palette.GREEN
-		"SPILL":
-			text = "SPILLED!"
-			color = Palette.RED
-		_:
-			text = "MISS %+d%%" % pct
-			color = Palette.RED
+	if result.band == Scoring.PERFECT:
+		text = "PERFECT! +%d" % result.coins
+		color = Palette.GOLD
+	elif result.band == Scoring.GOOD:
+		text = "GOOD %+d%% +%d" % [pct, result.coins]
+		color = Palette.GREEN
+	elif result.band == Scoring.SPILL:
+		text = "SPILLED!"
+		color = Palette.RED
+	else:
+		text = "MISS %+d%%" % pct
+		color = Palette.RED
 	var label := _label(Vector2(GLASS_X - 100, 168), color)
 	label.size = Vector2(200, 8)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
