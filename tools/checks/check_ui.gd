@@ -28,14 +28,28 @@ func run() -> void:
 	eq(hud.timer_label.get_theme_color("font_color"), Palette.WHITE, "timer is white otherwise")
 	hud.set_coins(42)
 	eq(hud.coins_label.text, "COINS 42", "coins label")
+	eq(hud.streak_label.position, Vector2(80, 8), "the multiplier sits right after the coin counter")
+	hud.set_coins(1234)
+	eq(hud.streak_label.position, Vector2(96, 8), "...and moves with it")
+	hud.set_streak(0, false)
+	eq([hud.streak_label.text, hud.streak_label.get_theme_color("font_color")], ["x1", Palette.FROST], "x1 is dim")
 	hud.set_streak(2)
 	eq(hud.streak_label.text, "x2", "streak label")
+	eq(hud.streak_label.get_theme_color("font_color"), Palette.GOLD, "a running streak is gold")
+	expect(hud.streak_label.scale.x > 1.5, "it pops when it grows (scale %.2f)" % hud.streak_label.scale.x)
+	hud.set_streak(0)
+	eq(hud.streak_label.text, "x1", "back to x1 on a reset")
+	eq(hud.streak_label.get_theme_color("font_color"), Palette.RED, "...flashing red while it shakes")
+	hud.set_streak(0, false)
+	eq(hud.streak_label.get_theme_color("font_color"), Palette.FROST, "a quiet reset (new round) stays dim, no flash")
 	hud.show_banner("LAST CALL!", 1.5)
 	eq(hud.banner_label.visible and hud.banner_label.text == "LAST CALL!", true, "banner shows")
 	for c in [
 		[{"band": Scoring.PERFECT, "coins": 15}, "+15", Palette.GOLD],
 		[{"band": Scoring.GOOD, "coins": 7}, "+7", Palette.GREEN],
+		[{"band": Scoring.GOOD_ENOUGH, "coins": 3}, "+3", Palette.FROST],
 		[{"band": Scoring.MISS, "coins": 0}, "0", Palette.RED],
+		[{"band": Scoring.SPILL, "coins": -6}, "-6", Palette.RED],
 		[{"band": Scoring.SPILL, "coins": 0}, "0", Palette.RED],
 	]:
 		var label := hud.popup(c[0], Vector2(100, 100))

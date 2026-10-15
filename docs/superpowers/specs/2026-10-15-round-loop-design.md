@@ -78,6 +78,12 @@ Coins persist across rounds for the session only (saving is a later slice).
 
 ## Scoring
 
+> **Superseded (2026-10-15, after the slice 2 playtest):** scoring now counts
+> pixel rows from the line as drawn, with fixed payouts per step — PERFECT
+> 0–1 rows, GOOD 2–3, GOOD ENOUGH 4–6 (holds the streak), MISS beyond — and a
+> spill costs coins (never below 0). See `CLAUDE.md` ("Scoring steps") and
+> `scoring.gd`. The rules below are the original slice 1 design.
+
 Error is signed and relative to the target: `error = (volume − target) / target`.
 
 | Band | Rule | Base coins |

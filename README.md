@@ -11,10 +11,10 @@ A side-view pouring game at 640×360: fill each glass to the fill line before th
 
 ## Rounds
 
-- 30 s timer. Serve as many glasses as you can: within ±3 % of the line = PERFECT (10 coins), within ±10 % = GOOD (8→2), else MISS; overflowing = SPILLED.
-- Streak multiplier x1 → x3: GOOD adds a step, PERFECT two; MISS/SPILL resets it. The multiplier before the glass pays out.
+- 30 s timer. Serve as many glasses as you can, scored by how many pixel rows the surface is from the line: 0–1 = PERFECT (10 coins), 2–3 = GOOD (6), 4–6 = GOOD ENOUGH (3), further = MISS (0). Overflowing = SPILL, which costs 6 coins (never below 0).
+- Streak multiplier x1 → x3 (shown next to your coins): GOOD adds a step, PERFECT two, GOOD ENOUGH keeps it; MISS/SPILL resets it. The multiplier before the glass pays out.
 - At 0:00 it is LAST CALL: liquid in the air still lands and the last glass is served, then the summary and the next round. The pourer refills automatically when it runs dry.
-- From round 2, wine joins water: each glass is randomly water or wine. Wine is poured from a bottle into a big stemmed glass with the line at its widest point (PERFECT 15 coins, GOOD 12→3); an empty bottle is replaced and uncorked.
+- From round 2, wine joins water: each glass is randomly water or wine. Wine is poured from a bottle into a big stemmed glass with the line at its widest point (PERFECT 15, GOOD 9, GOOD ENOUGH 5; a spill costs 9); an empty bottle is replaced and uncorked.
 
 ## Dev flags and checks
 

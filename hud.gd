@@ -6,6 +6,14 @@ extends CanvasLayer
 
 const FONT := preload("res://fonts/PressStart2P-Regular.ttf")
 const SCREEN_W := 640.0
+## Press Start 2P at 8 px is monospaced: every glyph is 8 px wide.
+const CHAR_W := 8.0
+## Popup colour per scoring step; anything else (MISS, SPILL) is red.
+const BAND_COLORS := {
+	Scoring.PERFECT: Palette.GOLD,
+	Scoring.GOOD: Palette.GREEN,
+	Scoring.GOOD_ENOUGH: Palette.FROST,
+}
 
 var root: Control
 var timer_label: Label
@@ -15,7 +23,10 @@ var banner_label: Label
 var hint_label: Label
 var debug_label: Label
 
-var _streak_pos := Vector2(184, 196)
+var _streak_pos := Vector2(72, 8)  # right after "COINS 0"; set_coins keeps it there
+var _streak_steps := 0
+var _streak_tween: Tween
+var _shaking := false
 var _banner_tween: Tween
 
 
@@ -33,6 +44,7 @@ func _ready() -> void:
 	timer_label.size = Vector2(SCREEN_W, 8)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	streak_label = make_label(_streak_pos, Palette.FROST)
+	streak_label.text = format_mult(0)
 	banner_label = make_label(Vector2(0, 112), Palette.WHITE)
 	banner_label.size = Vector2(SCREEN_W, 16)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -81,35 +93,58 @@ func set_time(seconds: float) -> void:
 
 func set_coins(total: int) -> void:
 	coins_label.text = "COINS %d" % total
+	_streak_pos = coins_label.position + Vector2((coins_label.text.length() + 1) * CHAR_W, 0)
+	if not _shaking:
+		streak_label.position = _streak_pos
 
 
-func place_streak(pos: Vector2) -> void:
-	_streak_pos = pos
-	streak_label.position = pos
-
-
-## Shows what the next glass pays; pops when it changes.
-func set_streak(steps: int) -> void:
-	var text := format_mult(steps)
-	if text == streak_label.text:
+## The streak multiplier, right after the coin counter: dim at x1, gold above.
+## It pops (double size, easing back) when it grows and shakes red when a
+## streak breaks; `animate` false sets it quietly (a new round starting).
+func set_streak(steps: int, animate := true) -> void:
+	if steps == _streak_steps and animate:
 		return
-	streak_label.text = text
-	streak_label.add_theme_color_override("font_color", Palette.GOLD if steps > 0 else Palette.FROST)
-	streak_label.position = _streak_pos - Vector2(0, 4)
-	create_tween().tween_property(streak_label, "position", _streak_pos, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var grew := steps > _streak_steps
+	_streak_steps = steps
+	if _streak_tween != null:
+		_streak_tween.kill()
+	_shaking = false
+	streak_label.text = format_mult(steps)
+	streak_label.scale = Vector2.ONE
+	streak_label.position = _streak_pos
+	streak_label.pivot_offset = Vector2(streak_label.text.length() * CHAR_W, CHAR_W) * 0.5
+	var color := Palette.GOLD if steps > 0 else Palette.FROST
+	streak_label.add_theme_color_override("font_color", color)
+	if not animate:
+		return
+	_streak_tween = create_tween()
+	if grew:
+		streak_label.scale = Vector2(2, 2)
+		_streak_tween.tween_property(streak_label, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		return
+	# The streak broke (steps only ever drop to 0): shake in red, then settle dim.
+	_shaking = true
+	streak_label.add_theme_color_override("font_color", Palette.RED)
+	for i in 5:
+		_streak_tween.tween_property(streak_label, "position:x", _streak_pos.x + (2.0 if i % 2 == 0 else -2.0), 0.05)
+	_streak_tween.tween_property(streak_label, "position:x", _streak_pos.x, 0.05)
+	_streak_tween.tween_callback(_end_shake.bind(color))
 
 
-## Floating coins earned, centred on `at` (a Scoring.score() result); the
-## color carries the band: gold PERFECT, green GOOD, red "0" for MISS/SPILL.
+func _end_shake(color: Color) -> void:
+	_shaking = false
+	streak_label.position = _streak_pos
+	streak_label.add_theme_color_override("font_color", color)
+
+
+## Floating coins won or lost, centred on `at` (a Scoring.score() result after
+## Main's 0 floor); the colour carries the step: gold PERFECT, green GOOD, frost
+## GOOD ENOUGH, red for a MISS ("0") or a spill ("-N", or "0" when there was
+## nothing left to lose).
 func popup(result: Dictionary, at: Vector2) -> Label:
-	var text := "0"
-	var color := Palette.RED
-	if result.band == Scoring.PERFECT:
-		text = "+%d" % result.coins
-		color = Palette.GOLD
-	elif result.band == Scoring.GOOD:
-		text = "+%d" % result.coins
-		color = Palette.GREEN
+	var coins: int = result.coins
+	var text := "%+d" % coins if coins != 0 else "0"
+	var color: Color = BAND_COLORS.get(result.band, Palette.RED)
 	var label := make_label(at - Vector2(100, 0), color)
 	label.size = Vector2(200, 8)
 	label.add_theme_color_override("font_outline_color", Palette.INK)

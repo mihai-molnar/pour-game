@@ -64,7 +64,7 @@ func show_results(round_number: int, stats: Dictionary, total_coins: int) -> voi
 		["GLASSES", str(stats.served)],
 		["PERFECT", str(stats.perfects)],
 		["BEST STREAK", Hud.format_mult(stats.best_steps)],
-		["COINS", "+%d" % stats.coins],
+		["COINS", "%+d" % stats.coins],
 		["", ""],
 		["TOTAL", str(total_coins)],
 	]

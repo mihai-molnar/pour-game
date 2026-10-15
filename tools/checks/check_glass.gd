@@ -1,6 +1,6 @@
 extends CheckBase
-## Checks the glass: exact capacity and fixed target per drink, band levels
-## following stats.good_tol, geometry helpers, the fill-line tick on a glass
+## Checks the glass: exact capacity and fixed target per drink, rows from the
+## line and the scoring band in rows, geometry helpers, the fill-line tick on a glass
 ## that narrows toward the rim, setup leaving no state behind, and the
 ## arrival. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=glass
@@ -27,12 +27,14 @@ func run() -> void:
 	expect(glass.volume == 0.0 and glass.spilled == 0.0, "reset empties the glass")
 	expect(is_equal_approx(glass.level_for(0.0), -5.0), "empty level is the floor")
 	expect(is_equal_approx(glass.level_for(glass.capacity), -74.0), "full level is the rim")
-	var band := glass.band_levels()
-	expect(band.x < glass.target_y() and glass.target_y() < band.y, "band edges straddle the fill line (%s vs %.1f)" % [band, glass.target_y()])
-	GameState.stats.good_tol = 0.2
-	var wide := glass.band_levels()
-	GameState.stats.good_tol = 0.1
-	expect(wide.x <= band.x and wide.y > band.y, "a wider good_tol widens the band (%s vs %s)" % [wide, band])
+	eq(glass.rows_from_line(glass.target), 0, "the target volume is on the line")
+	eq(glass.rows_from_line(glass.capacity), 6, "a brim-full tumbler is 6 rows over the line")
+	eq(glass.rows_from_line(0.0), 63, "an empty tumbler is 63 rows under it")
+	var one_row := float(glass._row_area[roundi(glass.target_y()) - glass._y0])
+	eq(glass.rows_from_line(glass.target + 2.0 * one_row), 2, "two rows' worth more is 2 rows over")
+	eq(glass.band_rows(3), Vector2i(-71, -65), "the ±3 row band around the line at y -68")
+	eq(glass.band_rows(6), Vector2i(-74, -62), "the ±6 row band reaches the rim row")
+	eq(glass.band_rows(9), Vector2i(-74, -59), "...and is cut at the rim")
 	expect(glass.opening_world() == Vector2(237, 275), "opening at the rim (got %s)" % glass.opening_world())
 	expect(is_equal_approx(glass.rim_y_world(), 206.0), "rim at y=206 (got %.1f)" % glass.rim_y_world())
 	expect(_tint_clear(glass), "wall tint polygons leave the interior clear")

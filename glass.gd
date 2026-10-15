@@ -5,7 +5,8 @@ extends Node2D
 ## exact to what's drawn. The surface is a 1D wave (one spring column per
 ## pixel) that the stream and glass motion excite; waves are visual only — the
 ## volume is the gameplay truth. The fill line is fixed per drink
-## (fill_fraction × capacity) and the ±good_tol band is drawn beside it.
+## (fill_fraction × capacity); scoring counts rows from it (rows_from_line) and
+## the scoring band is drawn beside it.
 ## A new glass arrives by sliding in from the left (arrive()); the lean only
 ## turns the Liquid and Front layers, never this node, so landing liquid and
 ## the rim/opening helpers never see it.
@@ -213,18 +214,25 @@ func target_y() -> float:
 	return _target_y
 
 
-## Local rows of the ±good_tol band edges: x = upper (+tol), y = lower (−tol).
-func band_levels() -> Vector2:
-	var tol: float = GameState.stats.good_tol
-	return Vector2(roundf(level_for(target * (1.0 + tol))), roundf(level_for(target * (1.0 - tol))))
+## How many pixel rows the settled surface holding `vol` sits from the fill
+## line, as drawn (waves don't count).
+func rows_from_line(vol: float) -> int:
+	return absi(roundi(level_for(vol)) - roundi(_target_y))
+
+
+## Local rows (top, bottom) of the band within `rows` rows of the fill line,
+## cut to the glass's own rows.
+func band_rows(rows: int) -> Vector2i:
+	var ty := roundi(_target_y)
+	return Vector2i(maxi(ty - rows, _y0), mini(ty + rows, _y0 + _row_area.size() - 1))
 
 
 ## Local x of the band bracket's spine: 4 px left of the outer wall's leftmost
 ## point across the band rows, so it also clears bowls that narrow toward the rim.
 func bracket_x() -> int:
-	var band := band_levels()
+	var band := band_rows(GameState.stats.ok_rows)
 	var left := INF
-	for y in range(int(band.x), int(band.y) + 2):
+	for y in range(band.x, band.y + 2):
 		left = minf(left, outer_x_at(float(y)).x)
 	return floori(left) - 4
 
@@ -401,20 +409,25 @@ func _draw_front(ci: CanvasItem) -> void:
 		ci.draw_rect(Rect2(px, floorf(d.y), 1, 2), def.liquid_highlight)
 
 
-## The ±good_tol band: a light bracket (spine + end ticks pointing at the
-## glass) just outside the left wall, outlined dark so it reads on any background.
+## The scoring band: a light bracket (spine + end ticks pointing at the glass)
+## just outside the left wall spanning GOOD ENOUGH (±ok_rows), with short inner
+## ticks where GOOD (±good_rows) ends, outlined dark so it reads on any
+## background. PERFECT (±1 row) is the fill line's own 3-row outline.
 func _draw_band(ci: CanvasItem) -> void:
-	var band := band_levels()
-	var y_top := int(band.x)
-	var y_bot := int(band.y)
+	var band := band_rows(GameState.stats.ok_rows)
+	var good := band_rows(GameState.stats.good_rows)
 	var x := bracket_x()
-	var h := y_bot - y_top + 1
-	ci.draw_rect(Rect2(x - 1, y_top - 1, 3, h + 2), Palette.INK)
-	ci.draw_rect(Rect2(x - 1, y_top - 1, 5, 3), Palette.INK)
-	ci.draw_rect(Rect2(x - 1, y_bot - 1, 5, 3), Palette.INK)
-	ci.draw_rect(Rect2(x, y_top, 1, h), Palette.FROST)
-	ci.draw_rect(Rect2(x, y_top, 3, 1), Palette.FROST)
-	ci.draw_rect(Rect2(x, y_bot, 3, 1), Palette.FROST)
+	var h := band.y - band.x + 1
+	ci.draw_rect(Rect2(x - 1, band.x - 1, 3, h + 2), Palette.INK)
+	for y in [band.x, band.y]:
+		ci.draw_rect(Rect2(x - 1, y - 1, 5, 3), Palette.INK)
+	for y in [good.x, good.y]:
+		ci.draw_rect(Rect2(x - 1, y - 1, 4, 3), Palette.INK)
+	ci.draw_rect(Rect2(x, band.x, 1, h), Palette.FROST)
+	for y in [band.x, band.y]:
+		ci.draw_rect(Rect2(x, y, 3, 1), Palette.FROST)
+	for y in [good.x, good.y]:
+		ci.draw_rect(Rect2(x, y, 2, 1), Palette.FROST)
 
 
 ## The fill line: a 1 px white line with dark rows above and below across the

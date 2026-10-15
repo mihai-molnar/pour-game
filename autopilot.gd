@@ -6,7 +6,7 @@ extends RefCounted
 
 ## Release DOWN when this share of the target is in the glass or the air, per
 ## drink id — the lower the line, the bigger the overshoot's share of the target.
-var release_at := {&"water": 0.86, &"wine": 0.86}
+var release_at := {&"water": 0.94, &"wine": 0.86}
 var _released := false
 
 

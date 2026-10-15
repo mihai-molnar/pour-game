@@ -5,7 +5,7 @@ extends CheckBase
 
 func run() -> void:
 	var expected := {
-		"round_duration": 30.0, "perfect_tol": 0.03, "good_tol": 0.10,
+		"round_duration": 30.0, "perfect_rows": 1, "good_rows": 3, "ok_rows": 6,
 		"coin_mult": 1.0, "pour_speed_mult": 1.0, "refill_time": 1.0,
 	}
 	for key in expected:
@@ -52,17 +52,17 @@ func _check_drink(d: DrinkDef, glass: Glass) -> void:
 	expect(d.pourer_interior.has(Vector2.ZERO), "%s: spout lip (0,0) is a pourer_interior vertex" % n)
 	expect(d.fill_fraction > 0.0 and d.fill_fraction <= 1.0, "%s: fill_fraction in (0, 1]" % n)
 	expect(d.pourer_full_fraction > 0.0 and d.pourer_full_fraction < 1.0, "%s: pourer_full_fraction in (0, 1)" % n)
-	expect(d.perfect_coins >= d.good_coins_max and d.good_coins_max >= d.good_coins_min, "%s: coins PERFECT >= GOOD max >= GOOD min" % n)
+	expect(d.perfect_coins >= d.good_coins and d.good_coins >= d.ok_coins and d.ok_coins > 0, "%s: coins PERFECT >= GOOD >= GOOD ENOUGH > 0" % n)
+	expect(d.spill_coins > 0, "%s: a spill costs coins" % n)
 	for p in d.glass_outer:
 		expect(p.y <= 0.0, "%s: the glass sits on its origin (outer y <= 0)" % n)
 	_inside(d.glass_interior, d.glass_outer, "%s: glass interior inside outer" % n)
 	_inside(d.pourer_interior, d.pourer_outer, "%s: pourer interior inside outer" % n)
 
-	# PERFECT must span at least ±1 pixel row, or it can't be hit by eye.
+	# The whole GOOD ENOUGH band above the line must be reachable without spilling.
 	glass.setup(d)
-	var tol: float = GameState.BASE_STATS.perfect_tol
-	var rows := glass.level_for(glass.target * (1.0 - tol)) - glass.level_for(glass.target * (1.0 + tol))
-	expect(rows >= 2.0, "%s: PERFECT spans at least ±1 pixel row (%.2f rows)" % [n, rows])
+	var above := glass.rows_from_line(glass.capacity)
+	expect(above >= GameState.BASE_STATS.ok_rows, "%s: a brim-full glass is at least ok_rows over the line (%d rows)" % [n, above])
 	# Drips leave the spout lip straight down, so it must sit over the opening.
 	var opening := glass.opening_world() - Vector2.ONE * glass.global_position.x
 	expect(d.pourer_offset.x > opening.x + 1.0 and d.pourer_offset.x < opening.y - 1.0,

@@ -22,6 +22,7 @@ func run() -> void:
 	_time_up_untouched_glass()
 	_time_up_mid_swap()
 	_empty_serve_ignored()
+	_spill_costs_coins_but_never_below_zero()
 	_space_ignored_during_swap_and_refill()
 	_next_round_resets_and_reads_stats()
 	_round_two_unlocks_wine()
@@ -238,6 +239,23 @@ func _empty_serve_ignored() -> void:
 	expect(main.streak_steps == 2, "...and leaves the streak alone")
 
 
+func _spill_costs_coins_but_never_below_zero() -> void:
+	_to_playing()
+	GameState.coins = 10
+	main.glass.receive(Main.GLASS_POS.x, main.glass.capacity + 50.0, 0.0)  # overflows
+	main.request_serve()
+	main.tick(DT, false)
+	eq(main.results.size(), 1, "the spilled glass is served")
+	eq([main.results[0].band, main.results[0].coins, GameState.coins], [Scoring.SPILL, -6, 4], "a water spill takes 6 of 10 coins")
+	_run(0.5)
+	GameState.coins = 4
+	main.glass.receive(Main.GLASS_POS.x, main.glass.capacity + 50.0, 0.0)
+	main.request_serve()
+	main.tick(DT, false)
+	eq([main.results[1].coins, GameState.coins], [-4, 0], "with 4 coins left it takes only 4: the total stops at 0")
+	eq(main.round_stats.coins, -10, "the round's coins count what was actually lost")
+
+
 func _space_ignored_during_swap_and_refill() -> void:
 	_to_playing()
 	_pour_until_swap()
@@ -274,7 +292,6 @@ func _next_round_resets_and_reads_stats() -> void:
 	_run(1.5, true)
 	expect(main.pourer.tilt < 0.001, "DOWN is ignored on the summary (pitcher upright)")
 	GameState.stats.round_duration = 10.0
-	GameState.stats.good_tol = 0.2
 	# Leave the pourer tilted, dry and refilling so only start_round can reset it.
 	main.pourer.tilt = 0.6
 	main.pourer.volume = main.pourer.full_volume * 0.001
@@ -289,8 +306,6 @@ func _next_round_resets_and_reads_stats() -> void:
 	expect(main.pourer.tilt == 0.0 and not main.pourer.refilling, "the pourer starts upright and not refilling")
 	expect(main.glass.def == main.drink and main.pourer.def == main.drink, "glass and pourer match the round's first drink")
 	expect(not main.summary.visible, "the summary is hidden")
-	var levels := main.glass.band_levels()
-	expect(is_equal_approx(levels.x, roundf(main.glass.level_for(main.glass.target * 1.2))), "band markers follow stats.good_tol")
 	GameState.stats = GameState.BASE_STATS.duplicate()
 
 

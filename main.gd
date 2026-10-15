@@ -24,7 +24,6 @@ const LAST_CALL_IDLE := 3.0
 ## A glass counts as touched once it holds this share of its capacity; less can't be served.
 const ACTIVE_SHARE := 0.01
 const POPUP_POS := Vector2(256, 148)
-const STREAK_POS := Vector2(184, 196)
 const AUTOPLAY_SUMMARY_WAIT := 1.5
 const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
 
@@ -62,7 +61,6 @@ var _shot_index := 0
 
 
 func _ready() -> void:
-	hud.place_streak(STREAK_POS)
 	summary.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	pourer.landed.connect(_on_landed)
@@ -111,6 +109,7 @@ func start_round() -> void:
 	pourer.arrive(drink, GLASS_POS + drink.pourer_offset)
 	summary.hide_results()
 	hud.show_banner(Hud.round_banner(GameState.round_number, unlocked), INTRO_TIME)
+	hud.set_streak(0, false)  # a new round's x1 isn't a broken streak
 	_refresh_hud()
 
 
@@ -239,7 +238,9 @@ func _serve() -> void:
 		if phase == Phase.LAST_CALL:
 			_finish_round()
 		return
-	var r := Scoring.score(glass.volume, glass.target, glass.spilled > 0.5, streak_steps, drink, GameState.stats)
+	var error := (glass.volume - glass.target) / glass.target
+	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak_steps, drink, GameState.stats)
+	r.coins = maxi(r.coins, -GameState.coins)  # a spill can't take the total below 0
 	r["drink"] = drink.id
 	streak_steps = r.steps
 	results.append(r)
