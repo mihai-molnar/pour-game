@@ -91,19 +91,17 @@ func set_streak(steps: int) -> void:
 	create_tween().tween_property(streak_label, "position", _streak_pos, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
-## Floating result text centred on `at` (a Scoring.score() result).
-func popup(result: Dictionary, at: Vector2) -> void:
-	var pct := roundi(result.error * 100.0)
-	var text := "MISS %+d%%" % pct
+## Floating coins earned, centred on `at` (a Scoring.score() result); the
+## color carries the band: gold PERFECT, green GOOD, red "0" for MISS/SPILL.
+func popup(result: Dictionary, at: Vector2) -> Label:
+	var text := "0"
 	var color := Palette.RED
 	if result.band == Scoring.PERFECT:
-		text = "PERFECT! +%d" % result.coins
+		text = "+%d" % result.coins
 		color = Palette.GOLD
 	elif result.band == Scoring.GOOD:
-		text = "GOOD %+d%% +%d" % [pct, result.coins]
+		text = "+%d" % result.coins
 		color = Palette.GREEN
-	elif result.band == Scoring.SPILL:
-		text = "SPILLED!"
 	var label := make_label(at - Vector2(100, 0), color)
 	label.size = Vector2(200, 8)
 	label.add_theme_color_override("font_outline_color", Palette.INK)
@@ -114,6 +112,7 @@ func popup(result: Dictionary, at: Vector2) -> void:
 	tw.tween_property(label, "position:y", label.position.y - 24.0, 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(label, "modulate:a", 0.0, 0.5).set_delay(0.9)
 	tw.chain().tween_callback(label.queue_free)
+	return label
 
 
 func show_banner(text: String, seconds: float) -> void:
