@@ -14,6 +14,7 @@ func run() -> void:
 	_intro_ignores_input()
 	_full_round_with_autopilot()
 	_last_call_auto_serve()
+	_last_call_held_down_while_refilling_does_not_serve()
 	_last_call_tiny_pour_still_ends()
 	_time_up_untouched_glass()
 	_time_up_mid_swap()
@@ -107,16 +108,36 @@ func _last_call_auto_serve() -> void:
 	_run(1.2, true)  # 0:00 hits while pouring
 	expect(main.phase == Main.Phase.LAST_CALL, "0:00 while pouring enters LAST_CALL")
 	var t := 0.0
+	var idle_from := -1.0  # when nothing was pouring, in the air or held (and no swap)
 	var served_at := -1.0
 	while main.phase == Main.Phase.LAST_CALL and t < 10.0:
 		main.tick(DT, false)
 		t += DT
+		if idle_from < 0.0 and not main.pourer.is_pouring() and main.stream.is_empty() and not main.is_swapping():
+			idle_from = t
 		if served_at < 0.0 and main.results.size() == 1:
 			served_at = t
 	expect(main.results.size() == 1, "the last-call glass is served automatically")
-	expect(served_at >= 3.0, "auto-serve waits for 3 s of idle (served after %.2f s)" % served_at)
+	var idle_for := served_at - idle_from
+	expect(idle_from >= 0.0 and idle_for >= 3.0 and idle_for < 3.1, "auto-serve comes 3.0-3.1 s after the idle starts (%.3f s)" % idle_for)
 	expect(main.phase == Main.Phase.SUMMARY, "the round ends after the last-call serve")
 	expect(main.glass.position.x == Main.OFFSCREEN_X, "no new glass slides in after last call")
+
+
+func _last_call_held_down_while_refilling_does_not_serve() -> void:
+	_to_playing()
+	_run(1.5, true)
+	expect(main.glass.volume > main.glass.capacity * Main.ACTIVE_SHARE, "some liquid is in the glass")
+	main.time_left = 0.05
+	_run(0.1, true)
+	expect(main.phase == Main.Phase.LAST_CALL, "0:00 with an active glass enters LAST_CALL")
+	GameState.stats.refill_time = 5.0
+	main.pourer.volume = main.pourer.full_volume * 0.001
+	var served := main.results.size()
+	_run(4.0, true)
+	expect(main.pourer.refilling, "the pitcher is still refilling")
+	expect(main.phase == Main.Phase.LAST_CALL and main.results.size() == served, "holding DOWN for 4 s blocks the idle auto-serve")
+	GameState.stats = GameState.BASE_STATS.duplicate()
 
 
 func _last_call_tiny_pour_still_ends() -> void:
@@ -183,6 +204,10 @@ func _space_ignored_during_swap_and_refill() -> void:
 
 func _next_round_resets_and_reads_stats() -> void:
 	_to_playing()
+	_pour_until_swap()  # one glass served: results and a drained pourer
+	_run(1.0)
+	expect(main.results.size() == 1, "one glass was served before the round ends")
+	expect(main.pourer.volume < main.pourer.full_volume, "the pitcher was drained by the serve")
 	main.streak_steps = 3
 	main.time_left = 0.01
 	_run(0.1, true)  # holding DOWN through the end of the round
@@ -191,12 +216,18 @@ func _next_round_resets_and_reads_stats() -> void:
 	expect(main.pourer.tilt < 0.001, "DOWN is ignored on the summary (pitcher upright)")
 	GameState.stats.round_duration = 10.0
 	GameState.stats.good_tol = 0.2
+	# Leave the pourer tilted, dry and refilling so only start_round can reset it.
+	main.pourer.tilt = 0.6
+	main.pourer.volume = main.pourer.full_volume * 0.001
+	main.pourer.refilling = true
 	var round_before: int = GameState.round_number
 	main.next_round()
 	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "next_round starts the next INTRO")
-	expect(main.streak_steps == 0 and main.results.is_empty(), "streak and results reset")
+	expect(main.streak_steps == 0, "streak resets")
+	expect(main.results.is_empty(), "results reset")
 	expect(is_equal_approx(main.time_left, 10.0), "round_duration is read at round start")
 	expect(is_equal_approx(main.pourer.volume, main.pourer.full_volume), "the pitcher starts full")
+	expect(main.pourer.tilt == 0.0 and not main.pourer.refilling, "the pitcher starts upright and not refilling")
 	expect(not main.summary.visible, "the summary is hidden")
 	var levels := main.glass.band_levels()
 	expect(is_equal_approx(levels.x, roundf(main.glass.level_for(main.glass.target * 1.2))), "band markers follow stats.good_tol")
