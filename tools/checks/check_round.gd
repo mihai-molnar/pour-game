@@ -161,9 +161,15 @@ func _space_ignored_during_swap_and_refill() -> void:
 	_to_playing()
 	_pour_until_swap()
 	var served := main.results.size()
+	var filled := false
 	while main.is_swapping():
 		main.request_serve()  # mashing Space
 		main.tick(DT, false)
+		if not filled and main._swap_t > Main.SWAP_OUT_TIME:
+			# The new glass is in: put water in it so a wrongly queued serve would score.
+			filled = true
+			main.glass.receive(Main.GLASS_POS.x, 500.0, 0.0)
+	expect(filled, "the new glass was filled during the swap")
 	_run(0.5)
 	expect(main.results.size() == served, "Space mashed during a swap doesn't serve the next glass")
 	main.glass.receive(Main.GLASS_POS.x, 500.0, 0.0)
