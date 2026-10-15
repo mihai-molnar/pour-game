@@ -44,18 +44,30 @@ unchanged.
 `drinks/wine.tres`, new palette entries `Palette.WINE` (`#a22633`) for the
 liquid and `Palette.WINE_LIGHT` (`#e43b44`) for the highlight.
 
-- **Glass:** a thin foot (≈ 26 px wide), a stem (≈ 2 px wide, ≈ 22 px tall)
-  and a bowl widest (≈ 40 px) about a third of the way up, narrowing to
-  ≈ 32 px at the rim; ≈ 80 px tall overall (the water tumbler is 74). The
-  foot and stem are part of `glass_outer` only; `glass_interior` is the bowl.
-- **Fill line:** at the bowl's widest point, the way wine is actually poured.
-  `fill_fraction` follows from the bowl shape (expected ≈ 0.3–0.45).
-- **Bottle:** no handle (`pourer_handle` empty). Body ≈ 26 px wide, a
-  shoulder, a neck ≈ 8 px wide and ≈ 26 px long; the spout lip (the node
-  origin) is the top of the neck. Walls tinted dark green (`Palette.BOTTLE`,
-  `#265c42`) through the new `DrinkDef.pourer_glass_color`; the pitcher keeps
-  today's frost walls. Flow may be slower than the pitcher (narrow neck) —
-  set by tuning.
+- **Glass:** a big Bordeaux-style glass: a foot 28 px wide, a stem 4 px wide
+  and 18 px tall, and a U-shaped bowl 48 px wide inside at its widest
+  (y −52 to −62), narrowing to 36 px at the rim; 96 px tall overall (the
+  water tumbler is 74). The foot and stem are part of `glass_outer` only;
+  `glass_interior` is the bowl (3 100 px²). Sized so PERFECT spans ±1 pixel
+  row (tuning target 1): a smaller glass with a lower line would make PERFECT
+  about ±0.4 rows (checked while planning, 2026-10-15).
+- **Fill line:** at the top of the bowl's widest section, the way wine is
+  actually poured: `fill_fraction` 0.53 (target 1 643 px², line at y ≈ −62,
+  about halfway up the bowl).
+- **Bottle:** no handle (`pourer_handle` empty). Body 40 px wide inside and
+  110 px long, a shoulder, a neck 6 px wide inside and 24 px long; the spout
+  lip (the node origin) is the top-left of the neck's mouth. About 150 px
+  long overall, holding about 2.7 glasses. Walls tinted dark green
+  (`Palette.BOTTLE`, `#265c42`) through the new `DrinkDef.pourer_glass_color`;
+  the pitcher keeps today's frost walls. Flow may be slower than the pitcher
+  (narrow neck) — set by tuning.
+- **Held, not standing:** a bottle standing upright beside the glass can't
+  get its spout over the opening (the neck is in the middle of the bottle),
+  so it is held tipped at 55° above and to the right of the glass, its mouth
+  ≈ 20 px above the rim and over the opening. New
+  `DrinkDef.pourer_rest_deg` (0 for the pitcher, 55 for the bottle): the
+  shapes stay authored upright, the pourer is drawn and simulated rotated by
+  it, and tilt, `max_tilt_deg` and "swings back upright" all count from it.
 - **Payout:** `perfect_coins` 15, `good_coins_max` 12, `good_coins_min` 3
   (water: 10 / 8 / 2).
 - **Why it's harder:** the low line makes the liquid still in the air at
@@ -70,7 +82,10 @@ meets them):
    row and unhittable; the bowl is sized to prevent that (also enforced by
    `check_drinks`, see Testing).
 2. The hold nearest the line differs from water's (3.0 s) by at least 0.7 s.
-3. A full bottle holds about 3 glasses at the line (2.5–3.5).
+3. A full bottle holds 2.5–3.5 glasses at the line (2.67 with the shapes
+   above).
+4. Pouring doesn't spill: in the sweep, nothing misses the glass for holds
+   that end at or below the GOOD band.
 
 ## Mixed Rounds
 
@@ -110,18 +125,24 @@ own `step()`, so arrivals advance inside `main.tick()` and stay deterministic.
 - **Lean:** the object tips toward its direction of travel as it brakes (the
   top keeps going), then wobbles back upright in about two shrinking swings,
   peaking around 6°. The wobble may finish up to 0.15 s after the slide; the
-  object is usable as soon as the slide ends.
+  object is usable as soon as the slide ends. It tips over its lowest
+  leading corner (`Arrival.pivot`), so nothing dips into the counter, and it
+  rotates only the vessel's draw layers (`Liquid`, `Front`), never the node,
+  so no gameplay code sees it.
 - All values are named constants in `arrival.gd`, tunable in playtest.
 
 **Glass:** `glass.arrive(drink)` runs `setup(drink)` (empty), places the glass
-off-screen left (x = −40) and slides it to `Main.GLASS_POS`. The lean is
-visual only: `receive`, `surface_y_world_at`, `opening_world` and
-`rim_y_world` keep using the position and ignore rotation. `glass.is_arriving()`.
+off-screen left (x = −40) and slides it to `Main.GLASS_POS`. `receive`,
+`surface_y_world_at`, `opening_world` and `rim_y_world` use the node, which
+never rotates. An empty glass doesn't slosh from its own motion (the arrival's
+acceleration would otherwise leave waves for the first pour).
+`glass.is_arriving()`.
 
 **Pourer:** `pourer.arrive(drink)` runs `setup(drink)` (full, upright),
 places it off-screen right (spout lip at x = 680) and slides it home
 (`GLASS_POS + drink.pourer_offset`). DOWN is ignored while it arrives (as
-while refilling); `rotation = −tilt + lean`. `pourer.is_arriving()`.
+while refilling); `rotation = −(rest + tilt)`, the lean is on its draw
+layers. `pourer.is_arriving()`.
 
 **Vanish:** the glass or pourer that's leaving disappears at once and leaves a
 puff of 4–6 pixels. The puff is drawn by a new `Effects` node (`effects.gd`),
@@ -163,8 +184,9 @@ faster-refill upgrade shortens both.
   2. A new, corked bottle arrives from the right (`ARRIVE_TIME`).
   3. The cork works its way out: the bottle wiggles with growing intensity
      for `max(refill_time − ARRIVE_TIME, 0.1)` s (0.7 s at the default), then
-     pops — the cork (a 2×3 px brown block) flies up and falls off-screen,
-     with a few droplets of spray. REFILLING ends at the pop.
+     pops — the cork (a 4×3 px brown block) flies out along the neck and
+     falls off-screen, with a few droplets of spray. REFILLING ends at the
+     pop.
 - **Drink change and round start:** a bottle also arrives corked but pops
   straight away (`POP_TIME` 0.15 s after landing, no wiggle), so switching
   drinks stays quick. Pouring is possible once the cork is out.
@@ -175,8 +197,12 @@ faster-refill upgrade shortens both.
 
 `drink_def.gd` gains:
 
-- `@export var pourer_glass_color := Palette.FROST` — the pourer's wall tint
-  (wine: `Palette.BOTTLE`).
+- `@export var pourer_glass_color := Color(Palette.FROST, 0.1)` — the
+  pourer's glass: rgb tints it, alpha is the body's tint strength (walls 3×,
+  capped at 1). The default reproduces today's pitcher exactly; wine uses
+  `Palette.BOTTLE` at 0.35 (solid green walls).
+- `@export_range(0, 90) var pourer_rest_deg := 0.0` — the angle the pourer is
+  held at when not pouring (see Wine).
 - `enum RefillStyle { IN_PLACE, NEW_BOTTLE }` and
   `@export var refill_style := RefillStyle.IN_PLACE`.
 
