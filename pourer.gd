@@ -236,7 +236,7 @@ func _draw_front(ci: CanvasItem) -> void:
 		return
 	var outer := def.pourer_outer
 	ci.draw_colored_polygon(outer, Color(Palette.FROST, 0.10))
-	for wall in Geometry2D.clip_polygons(outer, interior):
+	for wall in DrawLayer.wall_polygons(outer, interior):
 		ci.draw_colored_polygon(wall, Color(Palette.FROST, 0.3))
 	# Liquid surface sparkle.
 	if volume >= 1.0:

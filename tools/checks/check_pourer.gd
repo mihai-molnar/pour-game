@@ -19,6 +19,10 @@ func run() -> void:
 	pourer.reset()
 	expect(pourer.volume == pourer.full_volume and not pourer.refilling, "reset() = full, upright, not refilling")
 
+	# The wall tint must not cover the interior (clip_polygons alone returns the
+	# interior as a hole polygon, which fills it with frost).
+	_walls_cover_interior(DrawLayer.wall_polygons(pourer.def.pourer_outer, pourer.interior), pourer.interior, "wall_polygons")
+
 	# pour_speed_mult scales the tilt speed (measured before any pouring starts).
 	var base_tilt := _tilt_after_hold(pourer, 0.3)
 	GameState.stats.pour_speed_mult = 2.0
@@ -68,3 +72,15 @@ func _drain_and_refill(pourer: Pourer, hold: bool) -> Dictionary:
 		pourer.step(DT, hold)
 		t += DT
 	return {"tilts": tilts, "upright_at": upright_at, "refill_s": t - upright_at}
+
+
+func _walls_cover_interior(walls: Array, interior: PackedVector2Array, what: String) -> void:
+	var c := Vector2.ZERO
+	for p in interior:
+		c += p
+	c /= interior.size()
+	var covered := false
+	for w in walls:
+		if Geometry2D.is_point_in_polygon(c, w):
+			covered = true
+	expect(not covered, "%s: no wall polygon contains the interior centre" % what)

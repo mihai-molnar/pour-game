@@ -269,7 +269,7 @@ func _draw_front(ci: CanvasItem) -> void:
 	if def == null:
 		return
 	ci.draw_colored_polygon(outer, Color(Palette.FROST, 0.08))
-	for wall in Geometry2D.clip_polygons(outer, interior):
+	for wall in DrawLayer.wall_polygons(outer, interior):
 		ci.draw_colored_polygon(wall, Color(Palette.FROST, 0.3))
 
 	# Meniscus + bubbles.

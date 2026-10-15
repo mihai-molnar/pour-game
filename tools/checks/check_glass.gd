@@ -27,5 +27,14 @@ func run() -> void:
 	expect(wide.x <= band.x and wide.y > band.y, "a wider good_tol widens the band (%s vs %s)" % [wide, band])
 	expect(glass.opening_world() == Vector2(237, 275), "opening at the rim (got %s)" % glass.opening_world())
 	expect(is_equal_approx(glass.rim_y_world(), 206.0), "rim at y=206 (got %.1f)" % glass.rim_y_world())
+	var tint := DrawLayer.wall_polygons(glass.outer, glass.interior)
+	var c := Vector2.ZERO
+	for p in glass.interior:
+		c += p
+	c /= glass.interior.size()
+	var covered := false
+	for w in tint:
+		covered = covered or Geometry2D.is_point_in_polygon(c, w)
+	expect(not tint.is_empty() and not covered, "wall tint polygons leave the interior clear")
 	var walls := glass.outer_x_at(-37.0)
 	expect(walls.is_equal_approx(Vector2(-19, 19)), "outer walls at mid height (got %s)" % walls)
