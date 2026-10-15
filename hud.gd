@@ -8,6 +8,9 @@ const FONT := preload("res://fonts/PressStart2P-Regular.ttf")
 const SCREEN_W := 640.0
 ## Press Start 2P at 8 px is monospaced: every glyph is 8 px wide.
 const CHAR_W := 8.0
+## Where a grown multiplier pops up before flying to the coin counter, and how big.
+const STREAK_POP_AT := Vector2(320, 64)
+const STREAK_POP_SCALE := 4.0
 ## Popup colour per scoring step; anything else (MISS, SPILL) is red.
 const BAND_COLORS := {
 	Scoring.PERFECT: Palette.GOLD,
@@ -19,12 +22,14 @@ var root: Control
 var timer_label: Label
 var coins_label: Label
 var streak_label: Label
+## The big copy of a grown multiplier on its way to the counter (null otherwise).
+var streak_flyer: Label
 var banner_label: Label
 var hint_label: Label
 var debug_label: Label
 
 var _streak_pos := Vector2(72, 8)  # right after "COINS 0"; set_coins keeps it there
-var _streak_steps := 0
+var _streak_mult := 1.0
 var _streak_tween: Tween
 var _shaking := false
 var _banner_tween: Tween
@@ -44,7 +49,7 @@ func _ready() -> void:
 	timer_label.size = Vector2(SCREEN_W, 8)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	streak_label = make_label(_streak_pos, Palette.FROST)
-	streak_label.text = format_mult(0)
+	streak_label.text = format_mult(1.0)
 	banner_label = make_label(Vector2(0, 112), Palette.WHITE)
 	banner_label.size = Vector2(SCREEN_W, 16)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -73,9 +78,9 @@ static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [s / 60, s % 60]
 
 
-static func format_mult(steps: int) -> String:
-	var m := Scoring.multiplier(steps)
-	return "x%d" % int(m) if m == floorf(m) else "x%.1f" % m
+static func format_mult(mult: float) -> String:
+	var m := snappedf(mult, 0.1)
+	return "x%d" % roundi(m) if is_equal_approx(m, roundf(m)) else "x%.1f" % m
 
 
 ## The INTRO banner: "ROUND N", plus a second line naming a drink unlocked this round.
@@ -99,42 +104,59 @@ func set_coins(total: int) -> void:
 
 
 ## The streak multiplier, right after the coin counter: dim at x1, gold above.
-## It pops (double size, easing back) when it grows and shakes red when a
-## streak breaks; `animate` false sets it quietly (a new round starting).
-func set_streak(steps: int, animate := true) -> void:
-	if steps == _streak_steps and animate:
+## A grown value pops up big in the middle of the screen, then flies to the
+## counter and shrinks into place; a reset shakes the old value side to side
+## (a "denied" shake) and turns it into x1. `animate` false sets it quietly (a
+## new round starting).
+func set_streak(mult: float, animate := true) -> void:
+	if is_equal_approx(mult, _streak_mult) and animate:
 		return
-	var grew := steps > _streak_steps
-	_streak_steps = steps
-	if _streak_tween != null:
-		_streak_tween.kill()
-	_shaking = false
-	streak_label.text = format_mult(steps)
-	streak_label.scale = Vector2.ONE
-	streak_label.position = _streak_pos
-	streak_label.pivot_offset = Vector2(streak_label.text.length() * CHAR_W, CHAR_W) * 0.5
-	var color := Palette.GOLD if steps > 0 else Palette.FROST
-	streak_label.add_theme_color_override("font_color", color)
+	var grew := mult > _streak_mult
+	_streak_mult = mult
+	_stop_streak_animation()
 	if not animate:
+		_land_streak()
 		return
 	_streak_tween = create_tween()
 	if grew:
-		streak_label.scale = Vector2(2, 2)
-		_streak_tween.tween_property(streak_label, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		return
-	# The streak broke (steps only ever drop to 0): shake in red, then settle dim.
-	_shaking = true
-	streak_label.add_theme_color_override("font_color", Palette.RED)
-	for i in 5:
-		_streak_tween.tween_property(streak_label, "position:x", _streak_pos.x + (2.0 if i % 2 == 0 else -2.0), 0.05)
-	_streak_tween.tween_property(streak_label, "position:x", _streak_pos.x, 0.05)
-	_streak_tween.tween_callback(_end_shake.bind(color))
+		var text := format_mult(mult)
+		var size := Vector2(text.length() * CHAR_W, CHAR_W)
+		streak_flyer = make_label(STREAK_POP_AT - size * 0.5, Palette.GOLD)
+		streak_flyer.text = text
+		streak_flyer.pivot_offset = size * 0.5
+		streak_flyer.scale = Vector2.ZERO
+		_streak_tween.tween_property(streak_flyer, "scale", Vector2.ONE * STREAK_POP_SCALE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_streak_tween.tween_interval(0.35)
+		_streak_tween.tween_property(streak_flyer, "position", _streak_pos, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+		_streak_tween.parallel().tween_property(streak_flyer, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	else:
+		# The streak broke (it only ever drops to x1): quick jolts that die down.
+		_shaking = true
+		for dx in [4.0, -3.5, 3.0, -2.0, 1.5, -1.0, 0.0]:
+			_streak_tween.tween_property(streak_label, "position:x", _streak_pos.x + dx, 0.05)
+	_streak_tween.tween_callback(_land_streak)
 
 
-func _end_shake(color: Color) -> void:
+## Shows the current multiplier at the counter and clears any animation leftovers.
+func _land_streak() -> void:
+	_shaking = false
+	if streak_flyer != null:
+		streak_flyer.queue_free()
+		streak_flyer = null
+	streak_label.text = format_mult(_streak_mult)
+	streak_label.position = _streak_pos
+	streak_label.add_theme_color_override("font_color", Palette.GOLD if _streak_mult > 1.0 else Palette.FROST)
+
+
+func _stop_streak_animation() -> void:
+	if _streak_tween != null:
+		_streak_tween.kill()
+		_streak_tween = null
+	if streak_flyer != null:
+		streak_flyer.queue_free()
+		streak_flyer = null
 	_shaking = false
 	streak_label.position = _streak_pos
-	streak_label.add_theme_color_override("font_color", color)
 
 
 ## Floating coins won or lost, centred on `at` (a Scoring.score() result after

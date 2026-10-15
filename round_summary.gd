@@ -57,13 +57,13 @@ func _centered_label(parent: Control, y: float, color: Color, font_size: int) ->
 	return l
 
 
-## `stats` keys: served, perfects, best_steps, coins.
+## `stats` keys: served, perfects, best_mult, coins.
 func show_results(round_number: int, stats: Dictionary, total_coins: int) -> void:
 	_title.text = "ROUND %d DONE" % round_number
 	var rows := [
 		["GLASSES", str(stats.served)],
 		["PERFECT", str(stats.perfects)],
-		["BEST STREAK", Hud.format_mult(stats.best_steps)],
+		["BEST STREAK", Hud.format_mult(stats.best_mult)],
 		["COINS", "%+d" % stats.coins],
 		["", ""],
 		["TOTAL", str(total_coins)],

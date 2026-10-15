@@ -9,8 +9,6 @@ const GOOD := &"GOOD"
 const GOOD_ENOUGH := &"GOOD_ENOUGH"
 const MISS := &"MISS"
 const SPILL := &"SPILL"
-## Streak steps map to x1, x1.5, x2, x2.5, x3.
-const MAX_STEPS := 4
 
 
 ## The step for a surface `rows` rows from the line; the limits are stats'
@@ -40,37 +38,42 @@ static func base_coins(b: StringName, def: DrinkDef) -> int:
 	return 0
 
 
-static func next_steps(steps: int, b: StringName) -> int:
-	if b == PERFECT:
-		return mini(steps + 2, MAX_STEPS)
-	if b == GOOD:
-		return mini(steps + 1, MAX_STEPS)
+## The streak: GOOD-or-better glasses in a row. GOOD ENOUGH holds it; MISS
+## and SPILL reset it.
+static func next_streak(streak: int, b: StringName) -> int:
+	if b == PERFECT or b == GOOD:
+		return streak + 1
 	if b == GOOD_ENOUGH:
-		return steps  # a safe pour holds the streak
+		return streak
 	return 0
 
 
-static func multiplier(steps: int) -> float:
-	return 1.0 + 0.5 * clampi(steps, 0, MAX_STEPS)
+## The coin multiplier for a streak: x1 until stats.streak_start glasses in a
+## row, then 1 + streak_step per glass (x1.2 after 2, x1.3 after 3 ...), capped
+## at streak_max.
+static func multiplier(streak: int, stats: Dictionary) -> float:
+	if streak < stats.streak_start:
+		return 1.0
+	return minf(1.0 + stats.streak_step * streak, stats.streak_max)
 
 
 ## Earnings scale with the streak before this glass and coin_mult; a spill's cost doesn't.
-static func paid_coins(base: int, steps_before: int, coin_mult: float) -> int:
+static func paid_coins(base: int, streak_before: int, stats: Dictionary) -> int:
 	if base <= 0:
 		return base
-	return roundi(base * multiplier(steps_before) * coin_mult)
+	return roundi(base * multiplier(streak_before, stats) * stats.coin_mult)
 
 
 ## Scores one served glass. `rows` = rows from the line as drawn; `error` = the
 ## signed volume error relative to the target (passed through for tools and the
 ## debug readout). `coins` is the nominal payout — negative for a spill; Main
-## stops the coin total at 0. `steps` is the streak after this glass.
-static func score(rows: int, error: float, spilled: bool, steps_before: int, def: DrinkDef, stats: Dictionary) -> Dictionary:
+## stops the coin total at 0. `streak` is the streak after this glass.
+static func score(rows: int, error: float, spilled: bool, streak_before: int, def: DrinkDef, stats: Dictionary) -> Dictionary:
 	var b := band(rows, spilled, stats)
 	return {
 		"band": b,
 		"rows": rows,
 		"error": error,
-		"coins": paid_coins(base_coins(b, def), steps_before, stats.coin_mult),
-		"steps": next_steps(steps_before, b),
+		"coins": paid_coins(base_coins(b, def), streak_before, stats),
+		"streak": next_streak(streak_before, b),
 	}

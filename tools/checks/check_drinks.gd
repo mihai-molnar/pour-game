@@ -6,6 +6,7 @@ extends CheckBase
 func run() -> void:
 	var expected := {
 		"round_duration": 30.0, "perfect_rows": 1, "good_rows": 3, "ok_rows": 6,
+		"streak_start": 2, "streak_step": 0.1, "streak_max": 3.0,
 		"coin_mult": 1.0, "pour_speed_mult": 1.0, "refill_time": 1.0,
 	}
 	for key in expected:

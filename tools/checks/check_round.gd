@@ -232,11 +232,11 @@ func _time_up_mid_swap() -> void:
 
 func _empty_serve_ignored() -> void:
 	_to_playing()
-	main.streak_steps = 2
+	main.streak = 2
 	main.request_serve()
 	_run(0.5)
 	expect(main.results.is_empty() and not main.is_swapping(), "serving an empty glass is ignored")
-	expect(main.streak_steps == 2, "...and leaves the streak alone")
+	expect(main.streak == 2, "...and leaves the streak alone")
 
 
 func _spill_costs_coins_but_never_below_zero() -> void:
@@ -285,7 +285,7 @@ func _next_round_resets_and_reads_stats() -> void:
 	_run(1.0)
 	expect(main.results.size() == 1, "one glass was served before the round ends")
 	expect(main.pourer.volume < main.pourer.full_volume, "the pitcher was drained by the serve")
-	main.streak_steps = 3
+	main.streak = 3
 	main.time_left = 0.01
 	_run(0.1, true)  # holding DOWN through the end of the round
 	expect(main.phase == Main.Phase.SUMMARY, "the round ended")
@@ -299,7 +299,7 @@ func _next_round_resets_and_reads_stats() -> void:
 	var round_before: int = GameState.round_number
 	main.next_round()
 	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "next_round starts the next INTRO")
-	expect(main.streak_steps == 0, "streak resets")
+	expect(main.streak == 0, "streak resets")
 	expect(main.results.is_empty(), "results reset")
 	expect(is_equal_approx(main.time_left, 10.0), "round_duration is read at round start")
 	expect(is_equal_approx(main.pourer.volume, main.pourer.full_volume), "the pourer starts full")
