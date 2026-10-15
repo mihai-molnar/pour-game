@@ -13,7 +13,7 @@ const GLASS_X := 256.0
 const SHOT_TIMES := [0.5, 1.6, 2.6, 3.15, 3.35, 3.6, 4.0, 5.0, 6.2]
 
 @onready var glass: Glass = $Glass
-@onready var pitcher: Pitcher = $Pitcher
+@onready var pourer: Pourer = $Pourer
 @onready var stream: Stream = $Stream
 
 var coins := 0
@@ -39,13 +39,15 @@ func _ready() -> void:
 	var drink: DrinkDef = GameState.owned_drinks[0]
 	glass.setup(drink)
 	stream.set_drink(drink)
+	pourer.setup(drink)
+	pourer.position = Vector2(GLASS_X, 280.0) + drink.pourer_offset
 	_build_hud()
 	var args := {}
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		args[kv[0]] = kv[1] if kv.size() > 1 else ""
 	if args.has("sweep"):
-		_sweep()
+		_sweep(args["sweep"])
 		get_tree().quit()
 		return
 	if args.has("hold"):
@@ -65,7 +67,7 @@ func _physics_process(dt: float) -> void:
 	if _time >= _auto_serve_at:
 		_auto_serve_at = INF
 		_serve_queued = true
-	if _serve_queued and not _swapping and not pitcher.is_pouring() and stream.is_empty():
+	if _serve_queued and not _swapping and not pourer.is_pouring() and stream.is_empty():
 		_serve()
 	_update_hud()
 	if _time >= _quit_at:
@@ -80,9 +82,9 @@ func _process(_dt: float) -> void:
 
 
 func _step_sim(dt: float, hold: bool) -> void:
-	var out := pitcher.step(dt, hold)
+	var out := pourer.step(dt, hold)
 	if out > 0.0:
-		stream.emit(pitcher.global_position, pitcher.exit_velocity(), out, dt)
+		stream.emit(pourer.global_position, pourer.exit_velocity(), out, dt)
 	stream.step(dt, glass)
 	glass.step(dt)
 
@@ -103,7 +105,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_streak_steps = 0
 			stream.clear()
 			glass.reset()
-			pitcher.reset()
+			pourer.reset()
 		KEY_ESCAPE:
 			get_tree().quit()
 
@@ -118,11 +120,7 @@ func _serve() -> void:
 	_popup(result)
 	var tw := create_tween()
 	tw.tween_property(glass, "position:x", -40.0, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.tween_callback(func() -> void:
-		glass.reset()
-		if pitcher.refill_on_serve:
-			pitcher.refill()
-	)
+	tw.tween_callback(glass.reset)
 	tw.tween_property(glass, "position:x", GLASS_X, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(func() -> void: _swapping = false)
 
@@ -187,41 +185,50 @@ func _update_hud() -> void:
 	if _debug_label.visible:
 		var err := (glass.volume - glass.target) / glass.target * 100.0
 		_debug_label.text = "TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d" % [
-			roundi(rad_to_deg(pitcher.tilt)), roundi(pitcher.flow),
-			roundi(pitcher.volume), roundi(pitcher.capacity),
+			roundi(rad_to_deg(pourer.tilt)), roundi(pourer.flow),
+			roundi(pourer.volume), roundi(pourer.full_volume),
 			roundi(glass.volume), roundi(glass.target), err,
 			stream._parcels.size(),
 		]
 
 
-## Simulates holds of increasing length and prints how much ends up in the
-## glass, how much of it arrived after DOWN was released (the overshoot),
-## and how far the pitcher kept tilting after release (momentum).
-func _sweep() -> void:
+## Simulates holds of increasing length — with the pourer full, then half
+## full — and prints how much ends up in the glass, how far from the line,
+## how much arrived after DOWN was released (the overshoot), and settle time.
+func _sweep(drink_id: String) -> void:
 	var dt := 1.0 / 60.0
-	print("glass capacity %d px², pitcher %d px² (starts %d)" % [glass.capacity, pitcher.capacity, pitcher.capacity * pitcher.start_fill])
-	print("hold_s  release_deg  peak_deg  fill%  after_release%  settle_s  spilled")
-	var h := 0.6
-	while h <= 4.21:
-		stream.clear()
-		glass.reset()
-		pitcher.reset()
-		var t := 0.0
-		var peak := 0.0
-		var at_release := -1.0
-		var release_tilt := 0.0
-		while t < 15.0:
-			var hold := t < h
-			if not hold and at_release < 0.0:
-				at_release = glass.volume
-				release_tilt = pitcher.tilt
-			_step_sim(dt, hold)
-			peak = maxf(peak, pitcher.tilt)
-			t += dt
-			if t > h and pitcher.at_rest() and stream.is_empty():
-				break
-		print("%5.2f  %11d  %8d  %5.1f  %14.1f  %8.2f  %7d" % [
-			h, roundi(rad_to_deg(release_tilt)), roundi(rad_to_deg(peak)), glass.volume / glass.capacity * 100.0,
-			(glass.volume - at_release) / glass.capacity * 100.0, t - h, roundi(glass.spilled + stream.spilled),
-		])
-		h += 0.2
+	var d: DrinkDef = GameState.owned_drinks[0]
+	for owned in GameState.owned_drinks:
+		if String(owned.id) == drink_id:
+			d = owned
+	print("%s: glass %d px², line at %d px², pourer full %d px² (%.2f glasses)" % [
+		d.id, glass.capacity, glass.target, pourer.full_volume, pourer.full_volume / glass.target,
+	])
+	for fill in [1.0, 0.5]:
+		print("-- pourer starts %d%% full --" % roundi(fill * 100.0))
+		print("hold_s  release_deg  peak_deg  fill%  vs_line%  after_release%  settle_s  spilled")
+		var h := 0.6
+		while h <= 4.61:
+			stream.clear()
+			glass.reset()
+			pourer.reset(fill)
+			var t := 0.0
+			var peak := 0.0
+			var at_release := -1.0
+			var release_tilt := 0.0
+			while t < 15.0:
+				var hold := t < h
+				if not hold and at_release < 0.0:
+					at_release = glass.volume
+					release_tilt = pourer.tilt
+				_step_sim(dt, hold)
+				peak = maxf(peak, pourer.tilt)
+				t += dt
+				if t > h and pourer.at_rest() and stream.is_empty():
+					break
+			print("%5.2f  %11d  %8d  %5.1f  %8.1f  %14.1f  %8.2f  %7d" % [
+				h, roundi(rad_to_deg(release_tilt)), roundi(rad_to_deg(peak)),
+				glass.volume / glass.capacity * 100.0, (glass.volume - glass.target) / glass.target * 100.0,
+				(glass.volume - at_release) / glass.capacity * 100.0, t - h, roundi(glass.spilled + stream.spilled),
+			])
+			h += 0.2

@@ -13,7 +13,7 @@ func run() -> void:
 	for hold_s in [1.2, 2.0, 2.6, 3.4]:
 		main.stream.clear()
 		glass.reset()
-		main.pitcher.reset()
+		main.pourer.reset()
 		var t := 0.0
 		while t < hold_s + 2.0:
 			main._step_sim(dt, t < hold_s)
