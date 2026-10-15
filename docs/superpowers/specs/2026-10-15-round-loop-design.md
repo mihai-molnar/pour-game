@@ -159,8 +159,8 @@ Shader look parameters other than the liquid color stay in the materials in
 - `main.gd`: phases, timer, serve queue, glass swaps, last-call idle timer,
   refill trigger, per-round stats; keeps the fixed simulation order
   (`pourer.step` → `stream.emit` → `stream.step` → `glass.step`) in
-  `_step_sim`, and the dev flags (`--sweep[=drink_id]`, `--hold`, `--shots`,
-  `--quit`).
+  `_step_sim`, and the dev flags (`--sweep[=drink_id]`, `--autoplay`, `--shots`,
+  `--shot-every`, `--quit`).
 - `hud.gd`: timer (top center, `M:SS`, red in the last 5 s), coins (top left),
   streak multiplier near the glass (pops when it changes), result popups,
   "ROUND N" and "LAST CALL!" banners, F1 debug readout.
