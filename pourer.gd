@@ -365,10 +365,22 @@ func _highlight_segment() -> PackedVector2Array:
 	return PackedVector2Array([a + n * 4.0 + dir * 8.0, b + n * 4.0 - dir * 8.0])
 
 
+## The liquid as drawn: the interior below the current surface, minus
+## sub-pixel slivers. Clipping can leave a near-zero-area sliver where the
+## surface passes a hair from a corner (or when almost nothing sits below the
+## lip); Godot can't triangulate those, and they're invisible anyway.
+func liquid_polygons() -> Array[PackedVector2Array]:
+	var polys: Array[PackedVector2Array] = []
+	for poly in _liquid_shape(_surf_point, _surf_angle):
+		if poly_area(poly) >= 0.5:
+			polys.append(poly)
+	return polys
+
+
 func _draw_liquid(ci: CanvasItem) -> void:
 	if def == null or volume < 1.0:
 		return
-	for poly in _liquid_shape(_surf_point, _surf_angle):
+	for poly in liquid_polygons():
 		ci.draw_colored_polygon(poly, Color.WHITE)
 
 

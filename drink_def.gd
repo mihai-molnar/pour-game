@@ -24,9 +24,12 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_range(0.1, 1.0) var fill_fraction := 0.9
 
 @export_group("Payout")
+## Coins per scoring step, before the streak multiplier.
 @export var perfect_coins := 10
-@export var good_coins_max := 8
-@export var good_coins_min := 2
+@export var good_coins := 6
+@export var ok_coins := 3
+## What an overflow costs (never multiplied; the coin total stops at 0).
+@export var spill_coins := 6
 
 @export_group("Pourer")
 @export var pourer_interior := PackedVector2Array()

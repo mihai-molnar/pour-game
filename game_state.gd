@@ -6,8 +6,15 @@ extends Node
 
 const BASE_STATS := {
 	"round_duration": 30.0,
-	"perfect_tol": 0.03,
-	"good_tol": 0.10,
+	# Scoring step limits in pixel rows between the settled surface and the line.
+	"perfect_rows": 1,
+	"good_rows": 3,
+	"ok_rows": 6,
+	# Streak multiplier: x1 until streak_start GOOD-or-better glasses in a row,
+	# then 1 + streak_step per glass, capped at streak_max.
+	"streak_start": 2,
+	"streak_step": 0.1,
+	"streak_max": 3.0,
 	"coin_mult": 1.0,
 	"pour_speed_mult": 1.0,
 	"refill_time": 1.0,

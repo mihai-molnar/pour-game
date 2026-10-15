@@ -61,6 +61,28 @@ func run() -> void:
 
 	_check_arrival(pourer, water)
 	_check_wine(pourer, glass, wine)
+	_check_drawable_liquid(pourer, water, wine)
+
+
+## Clipping the interior at the surface can leave sub-pixel slivers where the
+## surface passes a hair from a corner; Godot can't triangulate them and logs
+## "Invalid polygon data, triangulation failed" when they're drawn. These exact
+## states (volume, tilt, slosh) produced one (found by a random search).
+func _check_drawable_liquid(pourer: Pourer, water: DrinkDef, wine: DrinkDef) -> void:
+	for c in [[water, 17.631875417997293, 1.6116318, -0.17012388],
+			[wine, 139.12759431155993, 0.8847026, 0.14675927],
+			[wine, 2671.3016543810186, 1.0356424, -0.0041520596]]:
+		pourer.setup(c[0])
+		pourer.place(GLASS_POS + c[0].pourer_offset)
+		pourer.volume = c[1]
+		pourer.tilt = c[2]
+		pourer.slosh = c[3]
+		pourer._update_surface()
+		var polys := pourer.liquid_polygons()
+		var drawable := true  # none at all is fine: a sub-pixel amount draws nothing
+		for poly in polys:
+			drawable = drawable and not Geometry2D.triangulate_polygon(poly).is_empty()
+		expect(drawable, "%s at volume %.1f: every liquid polygon can be drawn (%d polygons)" % [c[0].id, c[1], polys.size()])
 
 
 func _check_arrival(pourer: Pourer, water: DrinkDef) -> void:

@@ -24,7 +24,6 @@ const LAST_CALL_IDLE := 3.0
 ## A glass counts as touched once it holds this share of its capacity; less can't be served.
 const ACTIVE_SHARE := 0.01
 const POPUP_POS := Vector2(256, 148)
-const STREAK_POS := Vector2(184, 196)
 const AUTOPLAY_SUMMARY_WAIT := 1.5
 const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
 
@@ -42,8 +41,9 @@ var phase_time := 0.0
 var time_left := 0.0
 ## The current glass's drink; the pourer always matches it.
 var drink: DrinkDef
-var streak_steps := 0
-## This round's tallies: served, perfects, best_steps, coins.
+## GOOD-or-better glasses in a row this round (Scoring.multiplier turns it into the payout multiplier).
+var streak := 0
+## This round's tallies: served, perfects, best_mult, coins.
 var round_stats := {}
 ## Every glass scored this round (Scoring.score results plus "drink", its id).
 var results: Array[Dictionary] = []
@@ -62,7 +62,6 @@ var _shot_index := 0
 
 
 func _ready() -> void:
-	hud.place_streak(STREAK_POS)
 	summary.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	pourer.landed.connect(_on_landed)
@@ -96,8 +95,8 @@ func start_round() -> void:
 	phase = Phase.INTRO
 	phase_time = 0.0
 	time_left = GameState.stats.round_duration
-	streak_steps = 0
-	round_stats = {"served": 0, "perfects": 0, "best_steps": 0, "coins": 0}
+	streak = 0
+	round_stats = {"served": 0, "perfects": 0, "best_mult": 1.0, "coins": 0}
 	results.clear()
 	_serve_queued = false
 	_summary_in = -1.0
@@ -111,6 +110,7 @@ func start_round() -> void:
 	pourer.arrive(drink, GLASS_POS + drink.pourer_offset)
 	summary.hide_results()
 	hud.show_banner(Hud.round_banner(GameState.round_number, unlocked), INTRO_TIME)
+	hud.set_streak(1.0, false)  # a new round's x1 isn't a broken streak
 	_refresh_hud()
 
 
@@ -239,14 +239,16 @@ func _serve() -> void:
 		if phase == Phase.LAST_CALL:
 			_finish_round()
 		return
-	var r := Scoring.score(glass.volume, glass.target, glass.spilled > 0.5, streak_steps, drink, GameState.stats)
+	var error := (glass.volume - glass.target) / glass.target
+	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats)
+	r.coins = maxi(r.coins, -GameState.coins)  # a spill can't take the total below 0
 	r["drink"] = drink.id
-	streak_steps = r.steps
+	streak = r.streak
 	results.append(r)
 	round_stats.served += 1
 	if r.band == Scoring.PERFECT:
 		round_stats.perfects += 1
-	round_stats.best_steps = maxi(round_stats.best_steps, streak_steps)
+	round_stats.best_mult = maxf(round_stats.best_mult, Scoring.multiplier(streak, GameState.stats))
 	round_stats.coins += r.coins
 	GameState.coins += r.coins
 	hud.popup(r, POPUP_POS)
@@ -292,7 +294,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _refresh_hud() -> void:
 	hud.set_time(time_left)
 	hud.set_coins(GameState.coins)
-	hud.set_streak(streak_steps)
+	hud.set_streak(Scoring.multiplier(streak, GameState.stats))
 	var hint := HINT
 	if _serve_queued:
 		hint = "SERVING..."
