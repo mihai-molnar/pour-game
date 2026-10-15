@@ -90,7 +90,8 @@ func setup(d: DrinkDef) -> void:
 	reset()
 
 
-## At its rest angle, still, not refilling or arriving, holding `fill` × full_volume.
+## At home and its rest angle, still, not refilling or arriving, holding
+## `fill` × full_volume.
 func reset(fill := 1.0) -> void:
 	tilt = 0.0
 	tilt_vel = 0.0
@@ -103,6 +104,7 @@ func reset(fill := 1.0) -> void:
 	corked = false
 	_refill_t = -1.0
 	_arrive_t = -1.0
+	position = home
 	rotation = -_rest()
 	_apply_lean(0.0)
 	_update_surface()
@@ -400,5 +402,5 @@ func _draw_front(ci: CanvasItem) -> void:
 	ci.draw_rect(Rect2(lip.floor(), Vector2.ONE), Palette.WHITE)
 	if corked:
 		var m := _mouth()
-		ci.draw_rect(Rect2(m.x + 1.0, -3.0, m.y - 2.0, 5.0), Palette.CLAY)
+		ci.draw_rect(Rect2(m.x + 1.0, -3.0, m.y - 2.0, 5.0), Palette.BROWN)
 		ci.draw_rect(Rect2(m.x + 1.0, -3.0, m.y - 2.0, 1.0), Palette.TAN)

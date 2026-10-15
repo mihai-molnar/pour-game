@@ -85,6 +85,10 @@ func _check_arrival(pourer: Pourer, water: DrinkDef) -> void:
 		expect(_events.landed[0].is_equal_approx(home + Vector2(11, 105)), "...at the pitcher's leading bottom corner (%s)" % _events.landed[0])
 	pourer.step(DT, true)
 	expect(pourer.tilt > 0.0, "once it has arrived, DOWN tilts it")
+	pourer.arrive(water, home)
+	pourer.step(DT, false)
+	pourer.reset()
+	expect(pourer.position == home and not pourer.is_busy(), "reset() mid-arrival puts it back home, ready (%s)" % pourer.position)
 
 
 func _check_wine(pourer: Pourer, glass: Glass, wine: DrinkDef) -> void:

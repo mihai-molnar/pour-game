@@ -23,7 +23,7 @@ const SUMMARY_DELAY := 0.35
 const LAST_CALL_IDLE := 3.0
 ## A glass counts as touched once it holds this share of its capacity; less can't be served.
 const ACTIVE_SHARE := 0.01
-const POPUP_POS := Vector2(256, 168)
+const POPUP_POS := Vector2(256, 148)
 const STREAK_POS := Vector2(184, 196)
 const AUTOPLAY_SUMMARY_WAIT := 1.5
 const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
@@ -334,6 +334,7 @@ func _sweep(drink_id: String) -> void:
 		var h := 0.6
 		while h <= 4.61:
 			stream.clear()
+			stream.spilled = 0.0  # per row: stream.clear() keeps the running total
 			glass.reset()
 			pourer.reset(fill)
 			var t := 0.0

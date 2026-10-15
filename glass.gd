@@ -337,7 +337,8 @@ func step(dt: float) -> void:
 		if _inside(wobbled, b.y):
 			b.x = wobbled
 		var c := clampi(floori(b.x) - _x0, 0, n - 1)
-		if volume < 0.5 or b.y <= _surface_local(c) + 1.0:
+		# It pops at the surface, or at the wall where a bowl narrows toward the rim.
+		if volume < 0.5 or b.y <= maxf(_surface_local(c), float(_col_top[c])) + 1.0:
 			_bubbles.remove_at(i)
 		else:
 			_bubbles[i] = b

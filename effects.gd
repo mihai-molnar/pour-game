@@ -41,7 +41,7 @@ func dust(at: Vector2) -> void:
 
 ## A popped cork flying off along `velocity`, plus a little spray of `spray` drops.
 func cork(at: Vector2, velocity: Vector2, spray: Color) -> void:
-	_add(at, velocity, 2.0, Vector2(4, 3), Palette.CLAY, GRAVITY)
+	_add(at, velocity, 2.0, Vector2(4, 3), Palette.BROWN, GRAVITY)
 	for i in 4:
 		_add(at, velocity.rotated(randf_range(-0.6, 0.6)) * randf_range(0.3, 0.6), 0.4, Vector2.ONE, spray, GRAVITY)
 

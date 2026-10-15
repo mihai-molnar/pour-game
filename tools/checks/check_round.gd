@@ -353,3 +353,8 @@ func _mixed_round_with_autopilot() -> void:
 	expect(main.phase == Main.Phase.SUMMARY, "the mixed round reaches SUMMARY")
 	expect(main.results.size() >= 4, "the autopilot serves at least 4 glasses in a mixed round (%d)" % main.results.size())
 	expect(count.has(&"wine") and count.has(&"water"), "round 2 serves both drinks (%s)" % count)
+	var good := 0
+	for r in main.results:
+		if r.band == Scoring.PERFECT or r.band == Scoring.GOOD:
+			good += 1
+	expect(good * 2 >= main.results.size(), "the autopilot lands most glasses GOOD or better (%d of %d)" % [good, main.results.size()])

@@ -11,6 +11,7 @@ func run() -> void:
 	var checked := 0
 	var bad := 0
 	var worst := ""
+	seed(2)  # bubbles are visual randomness; a fixed seed makes a failure repeatable
 	for d: DrinkDef in [GameState.WATER, GameState.ROUND_UNLOCKS[2]]:
 		glass.setup(d)
 		glass.place(Main.GLASS_POS)
