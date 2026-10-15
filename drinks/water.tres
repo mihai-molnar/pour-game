@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="DrinkDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://drink_def.gd" id="1_drink"]
+
+[resource]
+script = ExtResource("1_drink")
+id = &"water"
+display_name = "Water"
+liquid_color = Color(0, 0.6, 0.858824, 1)
+liquid_highlight = Color(0.172549, 0.909804, 0.960784, 1)
+glass_interior = PackedVector2Array(-15, -5, 15, -5, 19, -74, -19, -74)
+glass_outer = PackedVector2Array(-17, 0, 17, 0, 21, -74, -21, -74)
+fill_fraction = 0.9
+pourer_interior = PackedVector2Array(0, 0, 58, 0, 58, 82, 13, 82, 13, 13)
+pourer_outer = PackedVector2Array(-3, -1, 60, -1, 60, 87, 11, 87, 11, 15)
+pourer_handle = PackedVector2Array(60, 10, 68, 10, 73, 15, 73, 58, 68, 63, 60, 63)
+pourer_offset = Vector2(14, -87)
