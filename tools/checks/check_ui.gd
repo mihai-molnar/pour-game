@@ -16,6 +16,8 @@ func run() -> void:
 	eq(Hud.format_mult(2), "x2", "x2")
 	eq(Hud.format_mult(4), "x3", "x3")
 	eq(Hud.format_mult(9), "x3", "capped at x3")
+	eq(Hud.round_banner(1, null), "ROUND 1", "plain round banner")
+	eq(Hud.round_banner(2, GameState.ROUND_UNLOCKS[2]), "ROUND 2\nNEW DRINK: WINE", "the unlock banner names the drink")
 
 	var hud: Hud = load("res://hud.gd").new()
 	add_child(hud)
@@ -64,3 +66,16 @@ func run() -> void:
 	summary._unhandled_input(space)
 	eq(pressed[0], true, "Space on the summary emits next_pressed")
 	eq(summary.visible, false, "...and hides it")
+
+	var fx: Effects = load("res://effects.gd").new()
+	add_child(fx)
+	fx.puff(Vector2(100, 100))
+	expect(fx.count() >= 4 and fx.count() <= 6, "a puff is 4-6 pixels (%d)" % fx.count())
+	fx.cork(Vector2(100, 100), Vector2(-100, -100), Palette.WINE_LIGHT)
+	fx.dust(Vector2(100, 280))
+	for i in 180:
+		fx.step(1.0 / 60.0)
+	eq(fx.count(), 0, "effects are gone after 3 s")
+	for i in 100:
+		fx.puff(Vector2(100, 100))
+	expect(fx.count() <= Effects.MAX_BITS, "effects are capped (%d)" % fx.count())

@@ -66,6 +66,14 @@ static func format_mult(steps: int) -> String:
 	return "x%d" % int(m) if m == floorf(m) else "x%.1f" % m
 
 
+## The INTRO banner: "ROUND N", plus a second line naming a drink unlocked this round.
+static func round_banner(round_number: int, unlocked: DrinkDef) -> String:
+	var text := "ROUND %d" % round_number
+	if unlocked != null:
+		text += "\nNEW DRINK: %s" % unlocked.display_name.to_upper()
+	return text
+
+
 func set_time(seconds: float) -> void:
 	timer_label.text = format_time(seconds)
 	timer_label.add_theme_color_override("font_color", Palette.RED if seconds <= 5.0 else Palette.WHITE)
