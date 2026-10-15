@@ -30,6 +30,15 @@ func run() -> void:
 	eq(hud.streak_label.text, "x2", "streak label")
 	hud.show_banner("LAST CALL!", 1.5)
 	eq(hud.banner_label.visible and hud.banner_label.text == "LAST CALL!", true, "banner shows")
+	for c in [
+		[{"band": Scoring.PERFECT, "coins": 15}, "+15", Palette.GOLD],
+		[{"band": Scoring.GOOD, "coins": 7}, "+7", Palette.GREEN],
+		[{"band": Scoring.MISS, "coins": 0}, "0", Palette.RED],
+		[{"band": Scoring.SPILL, "coins": 0}, "0", Palette.RED],
+	]:
+		var label := hud.popup(c[0], Vector2(100, 100))
+		eq(label.text, c[1], "%s popup text" % c[0].band)
+		eq(label.get_theme_color("font_color"), c[2], "%s popup color" % c[0].band)
 	eq(hud.is_debug_visible(), false, "debug starts hidden")
 	hud.toggle_debug()
 	eq(hud.is_debug_visible(), true, "F1 toggles debug")
