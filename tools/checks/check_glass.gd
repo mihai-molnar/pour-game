@@ -33,9 +33,6 @@ func run() -> void:
 	eq(glass.rows_from_line(0.0), 63, "an empty tumbler is 63 rows under it")
 	var one_row := float(glass._row_area[roundi(glass.target_y()) - glass._y0])
 	eq(glass.rows_from_line(glass.target + 2.0 * one_row), 2, "two rows' worth more is 2 rows over")
-	eq(glass.band_rows(3), Vector2i(-71, -65), "the ±3 row band around the line at y -68")
-	eq(glass.band_rows(6), Vector2i(-74, -62), "the ±6 row band reaches the rim row")
-	eq(glass.band_rows(9), Vector2i(-74, -59), "...and is cut at the rim")
 	expect(glass.opening_world() == Vector2(237, 275), "opening at the rim (got %s)" % glass.opening_world())
 	expect(is_equal_approx(glass.rim_y_world(), 206.0), "rim at y=206 (got %.1f)" % glass.rim_y_world())
 	expect(_tint_clear(glass), "wall tint polygons leave the interior clear")
@@ -45,6 +42,7 @@ func run() -> void:
 	eq(glass.band_edges(1), Vector2(-69.5, -66.5), "PERFECT spans ±1.5 rows around the line")
 	eq(glass.band_edges(3), Vector2(-71.5, -64.5), "GOOD ticks at ±3.5")
 	eq(glass.band_edges(6), Vector2(-74.0, -61.5), "GOOD ENOUGH reaches the rim and is cut there")
+	eq(glass.band_edges(9), Vector2(-74.0, -58.5), "...however wide the band")
 	expect(glass.bracket_x() <= glass.outer_x_at(-68.0).x - 2.0, "the bracket clears the wall (%.1f)" % glass.bracket_x())
 	_check_drawn_liquid(glass)
 

@@ -2,7 +2,8 @@
 
 Date: 2026-10-18
 Status: Approved (2026-10-18: "continue with the implementation … go with your
-recommendations")
+recommendations"); implemented 2026-10-18 on `feat/smooth-art` — plan
+`docs/superpowers/plans/2026-10-18-smooth-art-style.md` — awaiting the user's playtest
 
 ## Overview
 

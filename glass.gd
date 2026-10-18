@@ -230,13 +230,6 @@ func rows_from_line(vol: float) -> int:
 	return absi(roundi(level_for(vol)) - roundi(_target_y))
 
 
-## Local rows (top, bottom) of the band within `rows` rows of the fill line,
-## cut to the glass's own rows.
-func band_rows(rows: int) -> Vector2i:
-	var ty := roundi(_target_y)
-	return Vector2i(maxi(ty - rows, _y0), mini(ty + rows, _y0 + _row_area.size() - 1))
-
-
 ## Local y the fill line is drawn on: the target's row, which is what
 ## rows_from_line rounds the target to.
 func line_y() -> float:
