@@ -62,6 +62,12 @@ func run() -> void:
 	_check_arrival(pourer, water)
 	_check_wine(pourer, glass, wine)
 	_check_drawable_liquid(pourer, water, wine)
+	for d: DrinkDef in [water, wine]:
+		_refill_progress_rises_to_one(pourer, d)
+	var c := Pourer.rest_center(water, Vector2(270, 175))
+	expect(absf(c.x - 304.5) < 0.5 and absf(c.y - 227.0) < 0.5, "the pitcher's resting centre (%s)" % c)
+	c = Pourer.rest_center(wine, Vector2(268, 164))
+	expect(absf(c.x - 331.2) < 0.5 and absf(c.y - 204.6) < 0.5, "the bottle's resting centre, held at its angle (%s)" % c)
 	pourer.setup(wine)
 	var mouth := pourer._mouth()  # x = left edge, y = width
 	var cork := pourer.cork_rect()
@@ -197,6 +203,39 @@ func _check_wine(pourer: Pourer, glass: Glass, wine: DrinkDef) -> void:
 		expect(is_equal_approx(pourer.volume, pourer.full_volume) and not pourer.corked and not pourer.refilling, "a full, open bottle after the refill")
 		expect(pourer.position == home, "back at home after the refill (%s)" % pourer.position)
 	GameState.stats.refill_time = 1.0
+
+
+## refill_progress(): 0 while swinging back upright, never falling, under 1
+## while refilling and (nearly) 1 on its last tick, 1 when not refilling.
+func _refill_progress_rises_to_one(pourer: Pourer, d: DrinkDef) -> void:
+	pourer.setup(d)
+	pourer.place(GLASS_POS + d.pourer_offset)
+	pourer.reset()
+	eq(pourer.refill_progress(), 1.0, "%s: progress 1 when not refilling" % d.id)
+	pourer.tilt = 1.0
+	pourer.volume = pourer.full_volume * 0.005
+	pourer.step(DT, false)
+	var last := 0.0
+	var rising := true
+	var swing_zero := true
+	var under_one := true
+	var t := 0.0
+	while pourer.refilling and t < 10.0:
+		var p := pourer.refill_progress()
+		if pourer._refill_t < 0.0 and p != 0.0:
+			swing_zero = false
+		if p < last:
+			rising = false
+		if p >= 1.0:
+			under_one = false
+		last = p
+		pourer.step(DT, false)
+		t += DT
+	expect(swing_zero, "%s: progress 0 while swinging back upright" % d.id)
+	expect(rising, "%s: progress never falls" % d.id)
+	expect(under_one, "%s: progress stays under 1 while refilling" % d.id)
+	expect(last >= 0.95, "%s: progress reaches ~1 as the refill ends (%.3f)" % [d.id, last])
+	eq(pourer.refill_progress(), 1.0, "%s: progress 1 after" % d.id)
 
 
 func _tilt_after_hold(pourer: Pourer, seconds: float) -> float:

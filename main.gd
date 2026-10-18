@@ -22,12 +22,17 @@ enum Phase { INTRO, PLAYING, LAST_CALL, SHOP }
 const GLASS_POS := Vector2(256, 280)
 ## The static camera: the world point at the screen centre, and how much closer
 ## than 1:1 it shows the 640x360 world.
-const CAMERA_CENTER := Vector2(300, 186)
-const CAMERA_ZOOM := 1.75
+const CAMERA_CENTER := Vector2(300, 199)
+const CAMERA_ZOOM := 1.65
 const SCREEN_SIZE := Vector2(640, 360)
 ## The world rect the background image covers (art/background.png, 7 image px
 ## per world px; tools/background/bar.html draws it with the same numbers).
-const BACKGROUND_RECT := Rect2(110, 76, 380, 220)
+const BACKGROUND_RECT := Rect2(100, 84, 400, 230)
+## The counter lip's lower edge (world y; bar.html's LIP_BOTTOM): below it is
+## the bar's front, where the key row sits.
+const COUNTER_LIP_Y := 286.5
+## How much counter front (HUD units) the view shows below the lip for the key row.
+const KEY_ROOM := 34.0
 const INTRO_TIME := 1.5
 ## The last-call glass vanishes this long before the shop opens, so its popup reads.
 const SHOP_DELAY := 0.35
@@ -37,7 +42,6 @@ const ACTIVE_SHARE := 0.01
 ## Result popups float this far above the glass's rim (world px).
 const POPUP_ABOVE_RIM := 14.0
 const AUTOPLAY_SHOP_WAIT := 1.5
-const HINT_SEP := "   ·   "
 
 @onready var glass: Glass = $Glass
 @onready var pourer: Pourer = $Pourer
@@ -62,6 +66,8 @@ var streak := 0
 var round_stats := {}
 ## Every glass scored this round (Scoring.score results plus "drink", its id).
 var results: Array[Dictionary] = []
+## The DOWN hold the last tick() used (false during INTRO and in the shop) — the DOWN key shows it.
+var hold_down := false
 
 var _serve_queued := false
 var _shop_in := -1.0  # >= 0 while the last-call glass's puff plays before the shop opens
@@ -187,6 +193,11 @@ func world_to_hud(p: Vector2) -> Vector2:
 	return (p - CAMERA_CENTER) * CAMERA_ZOOM + SCREEN_SIZE * 0.5
 
 
+## Where a result popup for the current glass starts (HUD), above its rim.
+func popup_at() -> Vector2:
+	return world_to_hud(Vector2(GLASS_POS.x, glass.rim_y_world() - POPUP_ABOVE_RIM))
+
+
 func is_swapping() -> bool:
 	return glass.is_arriving() or pourer.is_arriving()
 
@@ -199,28 +210,51 @@ func is_serving_phase() -> bool:
 ## — while serving, once the glass has landed, if the player owns it and it
 ## isn't on the glass yet. True if it was added.
 func try_garnish(key: Key) -> bool:
-	if not is_serving_phase() or _shop_in >= 0.0 or not glass.visible or glass.is_arriving() or drink == null:
+	if not _can_garnish():
 		return false
 	for g in drink.garnishes:
 		if g.key == key and GameState.owns_garnish(g):
-			return glass.add_garnish(g)
+			if not glass.add_garnish(g):
+				return false
+			hud.keys.press_garnish(key)
+			return true
 	return false
 
 
-## The key hint for the current drink, naming the garnishes the player owns for it.
-func hint_text() -> String:
-	var parts: Array[String] = ["HOLD DOWN  pour"]
-	for g in drink.garnishes if drink != null else []:
-		if GameState.owns_garnish(g):
-			parts.append("%s  %s" % [OS.get_keycode_string(g.key).to_upper(), g.display_name.to_lower()])
-	parts.append_array(["SPACE  serve", "F1  debug"])
-	return HINT_SEP.join(parts)
+## True while a garnish can go on the glass: serving, the glass landed, the round not ending.
+func _can_garnish() -> bool:
+	return is_serving_phase() and _shop_in < 0.0 and glass.visible and not glass.is_arriving() and drink != null
+
+
+## The garnishes a key press would add right now (the current drink's, owned,
+## not on the glass yet), in the drink's order — the garnish keys on screen.
+func garnish_keys() -> Array[GarnishDef]:
+	var out: Array[GarnishDef] = []
+	if not _can_garnish():
+		return out
+	for g in drink.garnishes:
+		if GameState.owns_garnish(g) and not glass.has_garnish(g.id):
+			out.append(g)
+	return out
+
+
+## True while serving with something (ACTIVE_SHARE or more) in the glass:
+## the SPACE key shows then — mid-pour too, where a press queues the serve
+## until the pour lands. Only an empty glass has no SPACE key.
+func glass_has_drink() -> bool:
+	return is_serving_phase() and _shop_in < 0.0 and glass.visible and glass.volume >= glass.capacity * ACTIVE_SHARE
+
+
+## True while a serve waits for the pour to land (the SPACE key stays down).
+func is_serve_queued() -> bool:
+	return _serve_queued
 
 
 func request_serve() -> void:
 	if not is_serving_phase() or is_swapping() or pourer.is_busy():
 		return
 	_serve_queued = true
+	hud.keys.space.press()
 
 
 func _physics_process(dt: float) -> void:
@@ -256,9 +290,11 @@ func _process(_dt: float) -> void:
 func tick(dt: float, hold: bool) -> void:
 	phase_time += dt
 	if phase == Phase.SHOP:
+		hold_down = false
 		return  # the round is over and the bar is hidden
 	if phase == Phase.INTRO:
 		hold = false
+	hold_down = hold
 	if phase == Phase.INTRO and phase_time >= INTRO_TIME:
 		_enter(Phase.PLAYING)
 	_step_sim(dt, hold)
@@ -334,7 +370,7 @@ func _serve() -> void:
 	round_stats.best_mult = maxf(round_stats.best_mult, Scoring.multiplier(streak, GameState.stats))
 	round_stats.coins += r.coins
 	GameState.coins += r.coins
-	hud.popup(r, world_to_hud(Vector2(GLASS_POS.x, glass.rim_y_world() - POPUP_ABOVE_RIM)))
+	hud.popup(r, popup_at())
 	effects.puff(glass.center_global())
 	if phase == Phase.LAST_CALL:
 		glass.vanish()
@@ -384,12 +420,7 @@ func _refresh_hud() -> void:
 	hud.set_time(time_left)
 	hud.set_coins(GameState.coins)
 	hud.set_streak(Scoring.multiplier(streak, GameState.stats))
-	var hint := hint_text()
-	if _serve_queued:
-		hint = "SERVING..."
-	elif pourer.refilling:
-		hint = "REFILLING..."
-	hud.set_hint(hint)
+	hud.keys.sync(self)
 	if hud.is_debug_visible():
 		var err := (glass.volume - glass.target) / glass.target * 100.0
 		var extras: Array[String] = []

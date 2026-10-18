@@ -57,6 +57,11 @@ func run() -> void:
 	hud.set_streak(1.5)
 	hud.set_streak(1.0, false)
 	eq([hud.streak_label.text, hud.streak_flyer], ["x1", null], "a quiet reset (new round) cancels any pop and shows x1")
+	var banner := hud.banner_rect("LAST CALL!")
+	expect(not banner.intersects(Hud.TIMER_PILL), "the banner sits clear of the timer (%s)" % banner)
+	var flyer_size := Vector2(Hud.text_width("x2.5", Hud.SIZE), Hud.SIZE) * Hud.STREAK_POP_SCALE
+	var pop := Rect2(Hud.STREAK_POP_AT - flyer_size * 0.5, flyer_size)
+	expect(not banner.intersects(pop), "...and of a streak popping up big (%s)" % pop)
 	hud.show_banner("LAST CALL!", 1.5)
 	eq(hud.banner_label.visible and hud.banner_label.text == "LAST CALL!", true, "banner shows")
 	for c in [

@@ -1,27 +1,34 @@
 class_name Hud
 extends CanvasLayer
-## Everything drawn over the game: timer, coins, streak multiplier, result
-## popups, banners, the key hint and the F1 debug readout, in soft dark pills
+## Everything drawn over the game: timer, coins, streak multiplier, the
+## keyboard keys (KeyHints), result popups, banners and the F1 debug readout, in soft dark pills
 ## set in Fredoka. Purely visual — it never drives game logic (its tweens only
-## animate labels). Laid out by hand in the 640x360 HUD space (not with
+## animate what it draws). Laid out by hand in the 640x360 HUD space (not with
 ## containers) so positions are known the moment they change.
 
 const FONT_FILE := preload("res://fonts/Fredoka.ttf")
 const SCREEN_W := 640.0
 const SIZE := 14
-const HINT_SIZE := 9
+const DEBUG_SIZE := 9
 const POPUP_SIZE := 22
 const BANNER_SIZE := 26
 ## Pills: top-left corner of the coin pill, their height, inner padding.
 const PILL_AT := Vector2(10, 8)
 const PILL_H := 22.0
 const PILL_PAD := 8.0
+## The timer, top centre over everything (a tipped pourer passes behind it).
 const TIMER_PILL := Rect2(290, 8, 60, 22)
 ## Gap between the coin count and the multiplier (a thin divider sits in it).
 const STREAK_GAP := 13.0
-## Where a grown multiplier pops up before flying to the coin counter, and how big.
-const STREAK_POP_AT := Vector2(320, 64)
+## Where a grown multiplier pops up before flying to the coin counter (below
+## the banner), and how big.
+const STREAK_POP_AT := Vector2(320, 92)
 const STREAK_POP_SCALE := 3.0
+## The ROUND / LAST CALL banner's top: just under the timer, above the streak
+## pop-up and clear of the garnish keys above the glass.
+const BANNER_Y := 34.0
+## How far a result popup floats up.
+const POPUP_RISE := 24.0
 ## Popup colour per scoring step; anything else (MISS, SPILL) is red.
 const BAND_COLORS := {
 	Scoring.PERFECT: Palette.GOLD,
@@ -38,13 +45,13 @@ var streak_label: Label
 ## The big copy of a grown multiplier on its way to the counter (null otherwise).
 var streak_flyer: Label
 var banner_label: Label
-var hint_label: Label
+## The keyboard keys under the pourer and the glass and beside it (Main syncs them every tick).
+var keys: KeyHints
 var debug_label: Label
 
 var _coin_pill: Panel
 var _divider: ColorRect
 var _timer_pill: Panel
-var _hint_pill: Panel
 var _streak_pos := Vector2.ZERO  # right after the coin count; set_coins keeps it there
 var _streak_mult := 1.0
 var _streak_tween: Tween
@@ -107,7 +114,9 @@ func _ready() -> void:
 	timer_label.size = _timer_pill.size
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	banner_label = make_label(Vector2(0, 100), Palette.WHITE)
+	keys = KeyHints.new()
+	root.add_child(keys)
+	banner_label = make_label(Vector2(0, BANNER_Y), Palette.WHITE)
 	banner_label.size = Vector2(SCREEN_W, 70)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner_label.add_theme_font_override("font", font(700))
@@ -115,15 +124,8 @@ func _ready() -> void:
 	banner_label.add_theme_color_override("font_outline_color", Color(Palette.INK, 0.85))
 	banner_label.add_theme_constant_override("outline_size", 8)
 	banner_label.visible = false
-	_hint_pill = _pill(Rect2(SCREEN_W - PILL_AT.x - 100.0, 360.0 - 8.0 - 17.0, 100.0, 17.0))
-	hint_label = make_label(_hint_pill.position + Vector2(PILL_PAD, 0), Color(Palette.WHITE, 0.7))
-	hint_label.size.y = 17.0
-	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hint_label.add_theme_font_override("font", font(500))
-	hint_label.add_theme_font_size_override("font_size", HINT_SIZE)
 	debug_label = make_label(Vector2(12, 38), Palette.FROST)
-	debug_label.add_theme_font_size_override("font_size", HINT_SIZE)
+	debug_label.add_theme_font_size_override("font_size", DEBUG_SIZE)
 	debug_label.visible = false
 	set_coins(0)
 
@@ -271,10 +273,21 @@ func popup(result: Dictionary, at: Vector2) -> Label:
 	label.scale = Vector2.ONE * 0.6
 	var tw := create_tween().set_parallel()
 	tw.tween_property(label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(label, "position:y", label.position.y - 24.0, 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(label, "position:y", label.position.y - POPUP_RISE, 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(label, "modulate:a", 0.0, 0.5).set_delay(0.9)
 	tw.chain().tween_callback(label.queue_free)
 	return label
+
+
+## The area a result popup centred on `at` sweeps with its digits as it floats up.
+static func popup_zone(at: Vector2) -> Rect2:
+	return Rect2(at.x - 30.0, at.y - POPUP_SIZE - POPUP_RISE, 60.0, POPUP_SIZE + POPUP_RISE)
+
+
+## Where the first line of banner `text` is drawn (HUD rect).
+func banner_rect(text: String) -> Rect2:
+	var w := text_width(text.get_slice("\n", 0), BANNER_SIZE, 700)
+	return Rect2((SCREEN_W - w) * 0.5, banner_label.position.y, w, font(700).get_height(BANNER_SIZE))
 
 
 func show_banner(text: String, seconds: float) -> void:
@@ -287,16 +300,6 @@ func show_banner(text: String, seconds: float) -> void:
 	_banner_tween.tween_interval(maxf(seconds - 0.3, 0.0))
 	_banner_tween.tween_property(banner_label, "modulate:a", 0.0, 0.3)
 	_banner_tween.tween_callback(banner_label.hide)
-
-
-## The key hint, in a pill in the bottom-right corner (clear of the glass and the pourer).
-func set_hint(text: String) -> void:
-	hint_label.text = text
-	var w := text_width(text, HINT_SIZE, 500) + PILL_PAD * 2.0
-	_hint_pill.size.x = w
-	_hint_pill.position.x = SCREEN_W - PILL_AT.x - w
-	hint_label.position.x = _hint_pill.position.x
-	hint_label.size.x = w
 
 
 func toggle_debug() -> void:
