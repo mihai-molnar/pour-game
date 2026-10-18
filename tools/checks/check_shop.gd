@@ -80,6 +80,27 @@ func run() -> void:
 	eq(shop.tab, Shop.Tab.MENU, "the shop reopens on the last tab")
 	shop.toggle(water)
 	expect(GameState.menu.size() == 2, "water back on")
+	# Page turns.
+	GameState.coins = 999
+	shop.open()
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._finish_turn()
+	shop.show_tab(Shop.Tab.DRINKS)
+	expect(shop.is_turning() and shop.tab == Shop.Tab.DRINKS, "a tab click turns the page (the new page is underneath at once)")
+	var coins_before := GameState.coins
+	for line in shop.lines:
+		line.price_button.pressed.emit()
+	eq(GameState.coins, coins_before, "nothing can be bought mid-turn")
+	shop.show_tab(Shop.Tab.MENU)
+	expect(shop.is_turning() and shop.tab == Shop.Tab.MENU, "a tab clicked mid-turn finishes that turn and starts the next")
+	shop._turn_tween.custom_step(Shop.TURN_TIME + 0.05)
+	expect(not shop.is_turning(), "a turn takes TURN_TIME")
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._turn_tween.custom_step(Shop.TURN_TIME + 0.05)
+	expect(not shop.is_turning() and shop.tab == Shop.Tab.UPGRADES, "turning back works too")
+	shop.close()
+	shop.open()
+	expect(not shop.is_turning(), "opening the shop doesn't turn a page")
 	shop.free()
 
 	# Menu art: printed-menu illustrations and marker bars, all drawable.

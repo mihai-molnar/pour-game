@@ -4,9 +4,9 @@ extends CanvasLayer
 ## dark table, with coloured index tabs down its right edge. UPGRADES sells
 ## the garnishes of your drinks, DRINKS sells new drinks, MENU switches your
 ## drinks on and off for the next round; lines still to unlock are blacked
-## out. Each page is a MenuPage of MenuLines. Built in code and laid out by
-## hand in the 640x360 HUD space, like Hud. Space or clicking NEXT ROUND emits
-## next_pressed and hides it.
+## out. Each page is a MenuPage of MenuLines; clicking a tab turns the page.
+## Built in code and laid out by hand in the 640x360 HUD space, like Hud.
+## Space or clicking NEXT ROUND emits next_pressed and hides it.
 
 signal next_pressed
 
@@ -24,6 +24,8 @@ const TAB_GAP := 8.0
 ## Blacked-out lines (things to unlock later): per drink on UPGRADES, and on DRINKS.
 const UPGRADE_TEASERS := {&"water": 2, &"wine": 3}
 const DRINK_TEASERS := 5
+## How long a page takes to turn.
+const TURN_TIME := 0.35
 
 ## The tab on show; it stays the same between visits.
 var tab := Tab.UPGRADES
@@ -42,6 +44,10 @@ var _paper: Control
 var _tabs: Array[Button] = []
 var _round_text := ""
 var _opened_at_msec := 0
+var _turn_tween: Tween
+var _outgoing: MenuPage  # the page that goes once the turn is over
+var _shadow: ColorRect  # cast by the turning page on the one underneath
+var _curl: DrawLayer  # light and shade on the turning page
 
 
 func _ready() -> void:
@@ -97,9 +103,86 @@ func close() -> void:
 	visible = false
 
 
+## Turns to tab `t`'s page: going to a later tab, the page on show folds
+## over toward the spine on its left, revealing the new one underneath; going
+## back, the earlier page turns back in over it. A click mid-turn finishes
+## that turn first. (Without a turn while the shop is hidden.)
 func show_tab(t: Tab) -> void:
+	_finish_turn()
+	if t == tab:
+		return
+	if not visible or page == null:
+		tab = t
+		refresh()
+		return
+	var forward := t > tab
+	var old := page
 	tab = t
-	refresh()
+	_set_page(_build_page(tab))
+	_outgoing = old
+	var turning := old if forward else page
+	if forward:
+		_paper.move_child(page, old.get_index())
+	_shadow = ColorRect.new()
+	_shadow.color = Color(Palette.INK, 0.0)
+	_shadow.size = MenuPage.SIZE
+	_shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_paper.add_child(_shadow)
+	_paper.move_child(_shadow, turning.get_index())
+	_curl = DrawLayer.new()
+	_curl.draw_func = _draw_curl
+	turning.add_child(_curl)
+	turning.pivot_offset = Vector2(0, MenuPage.SIZE.y * 0.5)
+	var folded := Color(0.72, 0.7, 0.68)
+	turning.scale.x = 1.0 if forward else 0.0
+	turning.modulate = Color.WHITE if forward else folded
+	_curl.modulate.a = 0.0 if forward else 1.0
+	_turn_tween = create_tween().set_parallel()
+	var easing := Tween.EASE_IN if forward else Tween.EASE_OUT
+	_turn_tween.tween_property(turning, "scale:x", 0.0 if forward else 1.0, TURN_TIME).set_trans(Tween.TRANS_SINE).set_ease(easing)
+	_turn_tween.tween_property(turning, "modulate", folded if forward else Color.WHITE, TURN_TIME)
+	_turn_tween.tween_property(_curl, "modulate:a", 1.0 if forward else 0.0, TURN_TIME)
+	_shadow.color.a = 0.3 if forward else 0.0
+	_turn_tween.tween_property(_shadow, "color:a", 0.0 if forward else 0.3, TURN_TIME)
+	_turn_tween.chain().tween_callback(_end_turn)
+	_arrange_tabs()
+
+
+func is_turning() -> bool:
+	return _turn_tween != null
+
+
+## Finishes a turn at once (a tab clicked mid-turn, or a refresh).
+func _finish_turn() -> void:
+	if _turn_tween != null:
+		_turn_tween.kill()
+		_end_turn()
+
+
+func _end_turn() -> void:
+	_turn_tween = null
+	if _outgoing != null:
+		_outgoing.visible = false
+		_outgoing.queue_free()
+		_outgoing = null
+	if _shadow != null:
+		_shadow.queue_free()
+		_shadow = null
+	if _curl != null:
+		_curl.queue_free()
+		_curl = null
+	page.scale = Vector2.ONE
+	page.modulate = Color.WHITE
+
+
+## Light and shade on a turning page: darker toward its turning edge, a bright
+## rim right at it.
+func _draw_curl(ci: CanvasItem) -> void:
+	var w := MenuPage.SIZE.x
+	var h := MenuPage.SIZE.y
+	ci.draw_polygon(PackedVector2Array([Vector2(w * 0.4, 0), Vector2(w, 0), Vector2(w, h), Vector2(w * 0.4, h)]),
+		PackedColorArray([Color(0, 0, 0, 0), Color(0, 0, 0, 0.3), Color(0, 0, 0, 0.3), Color(0, 0, 0, 0)]))
+	ci.draw_rect(Rect2(w - 3.0, 0, 3.0, h), Color(Palette.WHITE, 0.5))
 
 
 static func card_state(price: int, owned: bool, coins: int) -> CardState:
@@ -141,17 +224,22 @@ func blacked_out_lines() -> int:
 ## Brings everything up to date with GameState: a fresh page for the current
 ## tab, and the tabs.
 func refresh() -> void:
+	_finish_turn()
 	var old := page
-	page = _build_page(tab)
-	_paper.add_child(page)
+	_set_page(_build_page(tab))
 	if old != null:
 		old.visible = false
 		old.queue_free()  # not free(): this may run inside one of its buttons' signals
+	_arrange_tabs()
+
+
+func _set_page(p: MenuPage) -> void:
+	page = p
+	_paper.add_child(page)
 	lines = page.lines
 	coins_label = page.coins_label
 	round_line_label = page.round_line_label
 	next_button = page.next_button
-	_arrange_tabs()
 
 
 func _build_page(t: Tab) -> MenuPage:
@@ -201,6 +289,8 @@ func _line(item: Resource, title: String, description: String, picture: Callable
 
 
 func _on_line(item: Resource) -> void:
+	if is_turning():
+		return
 	if tab == Tab.MENU:
 		toggle(item)
 	else:
