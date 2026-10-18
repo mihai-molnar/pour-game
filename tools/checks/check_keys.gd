@@ -4,7 +4,8 @@ extends CheckBase
 ## that the keys on screen follow them through whole rounds; the DOWN key's
 ## dim / pressed / refill-ring states; where the keys sit (on screen, the row
 ## below the counter lip, UP and LEFT clear of the glass, its bracket, the HUD
-## pills, the pourers and the stream); the glyphs triangulate. Run:
+## pills, the pourers and the stream, and a drink's garnish keys clear of the
+## LAST CALL banner and the result popup); the glyphs triangulate. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=keys
 
 const DT := 1.0 / 60.0
@@ -279,6 +280,11 @@ func _key_geometry() -> void:
 		var bracket := main.world_to_hud(Vector2(main.glass.global_position.x + main.glass.bracket_x(), 0)).x
 		expect(left.end.x <= bracket - 4.0, "%s: LEFT clears the bracket (%.1f vs %.1f)" % [d.id, left.end.x, bracket])
 		var lip := Main.GLASS_POS + d.pourer_offset
+		var text_zones := [main.hud.banner_rect("LAST CALL!"), Hud.popup_zone(main.popup_at())]
+		for g in d.garnishes:
+			var r := keys.slot(main, g.key)
+			for z: Rect2 in text_zones:
+				expect(not r.intersects(z), "%s: the %s key clears the banner and the result popup (%s vs %s)" % [d.id, g.id, r, z])
 		for r: Rect2 in [up, left]:
 			expect(not _overlaps(glass_poly, r), "%s: %s clears the glass" % [d.id, r])
 			for pill: Rect2 in pills:

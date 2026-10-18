@@ -23,6 +23,11 @@ const STREAK_GAP := 13.0
 ## Where a grown multiplier pops up before flying to the coin counter, and how big.
 const STREAK_POP_AT := Vector2(320, 64)
 const STREAK_POP_SCALE := 3.0
+## The ROUND / LAST CALL banner's top: in the pill row between the coin and
+## timer pills, clear of the garnish keys above the glass and the streak pop-up.
+const BANNER_Y := 8.0
+## How far a result popup floats up.
+const POPUP_RISE := 24.0
 ## Popup colour per scoring step; anything else (MISS, SPILL) is red.
 const BAND_COLORS := {
 	Scoring.PERFECT: Palette.GOLD,
@@ -110,7 +115,7 @@ func _ready() -> void:
 	timer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	keys = KeyHints.new()
 	root.add_child(keys)
-	banner_label = make_label(Vector2(0, 100), Palette.WHITE)
+	banner_label = make_label(Vector2(0, BANNER_Y), Palette.WHITE)
 	banner_label.size = Vector2(SCREEN_W, 70)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner_label.add_theme_font_override("font", font(700))
@@ -267,10 +272,21 @@ func popup(result: Dictionary, at: Vector2) -> Label:
 	label.scale = Vector2.ONE * 0.6
 	var tw := create_tween().set_parallel()
 	tw.tween_property(label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(label, "position:y", label.position.y - 24.0, 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(label, "position:y", label.position.y - POPUP_RISE, 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(label, "modulate:a", 0.0, 0.5).set_delay(0.9)
 	tw.chain().tween_callback(label.queue_free)
 	return label
+
+
+## The area a result popup centred on `at` sweeps with its digits as it floats up.
+static func popup_zone(at: Vector2) -> Rect2:
+	return Rect2(at.x - 30.0, at.y - POPUP_SIZE - POPUP_RISE, 60.0, POPUP_SIZE + POPUP_RISE)
+
+
+## Where the first line of banner `text` is drawn (HUD rect).
+func banner_rect(text: String) -> Rect2:
+	var w := text_width(text.get_slice("\n", 0), BANNER_SIZE, 700)
+	return Rect2((SCREEN_W - w) * 0.5, banner_label.position.y, w, font(700).get_height(BANNER_SIZE))
 
 
 func show_banner(text: String, seconds: float) -> void:

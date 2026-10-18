@@ -193,6 +193,11 @@ func world_to_hud(p: Vector2) -> Vector2:
 	return (p - CAMERA_CENTER) * CAMERA_ZOOM + SCREEN_SIZE * 0.5
 
 
+## Where a result popup for the current glass starts (HUD), above its rim.
+func popup_at() -> Vector2:
+	return world_to_hud(Vector2(GLASS_POS.x, glass.rim_y_world() - POPUP_ABOVE_RIM))
+
+
 func is_swapping() -> bool:
 	return glass.is_arriving() or pourer.is_arriving()
 
@@ -361,7 +366,7 @@ func _serve() -> void:
 	round_stats.best_mult = maxf(round_stats.best_mult, Scoring.multiplier(streak, GameState.stats))
 	round_stats.coins += r.coins
 	GameState.coins += r.coins
-	hud.popup(r, world_to_hud(Vector2(GLASS_POS.x, glass.rim_y_world() - POPUP_ABOVE_RIM)))
+	hud.popup(r, popup_at())
 	effects.puff(glass.center_global())
 	if phase == Phase.LAST_CALL:
 		glass.vanish()

@@ -10,8 +10,9 @@ extends Control
 
 ## Gap (HUD units) between the counter lip and the top of the key row.
 const ROW_GAP := 5.0
-## UP's bottom edge sits this far above the spout's height (clear of the pourer and the stream).
-const UP_GAP := 8.0
+## UP's bottom edge sits this far above the spout's height (clear of the pourer,
+## the stream and a result popup floating up from the glass).
+const UP_GAP := 20.0
 ## LEFT's right edge sits this far left of the band bracket's spine, its top this far below the rim.
 const LEFT_GAP := 7.0
 const LEFT_DROP := 4.0
