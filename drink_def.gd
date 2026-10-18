@@ -82,6 +82,12 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var return_force := 3.0
 ## Velocity damping while returning (1/s); caps the return speed at return_force / return_damp.
 @export var return_damp := 2.0
+## > 0: an ease-out return instead (beer): once DOWN is let go it eases out of
+## its forward tip and drifts back at up to this speed (°/s), slowing within
+## ease_return_deg of rest and settling there without a clunk, so tapping DOWN
+## feathers the pour. A refilling pourer still swings back with return_force.
+@export var ease_return_speed_deg := 0.0
+@export var ease_return_deg := 12.0
 @export_range(30.0, 175.0) var max_tilt_deg := 140.0
 ## Fraction of speed kept when it clunks back onto the table.
 @export var rest_bounce := 0.2

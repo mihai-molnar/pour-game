@@ -187,15 +187,23 @@ func step(dt: float, hold: bool) -> float:
 		hold = false
 	var prev_vel := tilt_vel
 	var acc: float
+	var easing := not hold and not refilling and def.ease_return_speed_deg > 0.0
 	if hold:
 		var speed := def.pour_tilt_speed_deg if excess > 0.0 else def.tilt_speed_deg
 		acc = (deg_to_rad(speed * GameState.stats.pour_speed_mult) - tilt_vel) * def.tilt_response
+	elif easing:
+		# Drift back at a speed that fades within ease_return_deg of rest (never below a fifth of it).
+		var want := -deg_to_rad(def.ease_return_speed_deg) * clampf(tilt / deg_to_rad(def.ease_return_deg), 0.2, 1.0)
+		acc = (want - tilt_vel) * def.tilt_response
 	else:
 		acc = -def.return_force - def.return_damp * tilt_vel
 	tilt_vel += acc * dt
 	tilt += tilt_vel * dt
 	var max_tilt := deg_to_rad(def.max_tilt_deg)
-	if tilt < 0.0:
+	if easing and tilt <= deg_to_rad(0.05) and tilt_vel <= 0.0:
+		tilt = 0.0  # eased into rest
+		tilt_vel = 0.0
+	elif tilt < 0.0:
 		tilt = 0.0
 		# Clunk back onto the table; small speeds just settle.
 		tilt_vel = -tilt_vel * def.rest_bounce if tilt_vel < -0.2 else 0.0

@@ -62,6 +62,7 @@ func run() -> void:
 	_check_arrival(pourer, water)
 	_check_wine(pourer, glass, wine)
 	_check_drawable_liquid(pourer, water, wine)
+	_check_beer_return(pourer)
 	for d: DrinkDef in [water, wine]:
 		_refill_progress_rises_to_one(pourer, d)
 	var c := Pourer.rest_center(water, Vector2(270, 175))
@@ -203,6 +204,34 @@ func _check_wine(pourer: Pourer, glass: Glass, wine: DrinkDef) -> void:
 		expect(is_equal_approx(pourer.volume, pourer.full_volume) and not pourer.corked and not pourer.refilling, "a full, open bottle after the refill")
 		expect(pourer.position == home, "back at home after the refill (%s)" % pourer.position)
 	GameState.stats.refill_time = 1.0
+
+
+## The beer bottle eases back slowly when DOWN is let go (so tapping DOWN
+## feathers the pour): it eases out of its forward tip, drifts back, eases
+## into rest without a clunk. An empty one still swings back quickly to be
+## replaced.
+func _check_beer_return(pourer: Pourer) -> void:
+	var beer: DrinkDef = GameState.BEER
+	pourer.setup(beer)
+	pourer.place(GLASS_POS + beer.pourer_offset)
+	pourer.reset(0.3)  # little beer, so the tip doesn't empty it
+	pourer.tilt = deg_to_rad(50.0)
+	pourer.tilt_vel = deg_to_rad(8.0)  # still tipping forward when DOWN is let go
+	var tilts: Array[float] = []
+	for i in 600:
+		pourer.step(DT, false)
+		tilts.append(pourer.tilt)
+	expect(tilts[5] >= deg_to_rad(50.0), "beer: on release it eases out of the forward tip first")
+	expect(tilts[59] > deg_to_rad(35.0), "beer: still well tipped 1 s after release (%.1f°)" % rad_to_deg(tilts[59]))
+	var at_rest := tilts.find(0.0)
+	expect(at_rest > 120 and at_rest < 330, "beer: back at rest after 2-5.5 s (%.2f s)" % (at_rest * DT))
+	var stayed := at_rest >= 0
+	for i in range(maxi(at_rest, 0), tilts.size()):
+		stayed = stayed and tilts[i] == 0.0
+	expect(stayed and pourer.tilt_vel == 0.0, "beer: eases into rest, no clunk")
+	pourer.reset()
+	var refill := _drain_and_refill(pourer, false)
+	expect(refill.upright_at > 0.0 and refill.upright_at < 1.5, "beer: an empty bottle swings back quickly to be replaced (%.2f s)" % refill.upright_at)
 
 
 ## refill_progress(): 0 while swinging back upright, never falling, under 1
