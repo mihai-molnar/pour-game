@@ -209,7 +209,10 @@ func try_garnish(key: Key) -> bool:
 		return false
 	for g in drink.garnishes:
 		if g.key == key and GameState.owns_garnish(g):
-			return glass.add_garnish(g)
+			if not glass.add_garnish(g):
+				return false
+			hud.keys.press_garnish(key)
+			return true
 	return false
 
 
@@ -242,6 +245,7 @@ func request_serve() -> void:
 	if not is_serving_phase() or is_swapping() or pourer.is_busy():
 		return
 	_serve_queued = true
+	hud.keys.space.press()
 
 
 func _physics_process(dt: float) -> void:
@@ -407,6 +411,7 @@ func _refresh_hud() -> void:
 	hud.set_time(time_left)
 	hud.set_coins(GameState.coins)
 	hud.set_streak(Scoring.multiplier(streak, GameState.stats))
+	hud.keys.sync(self)
 	if hud.is_debug_visible():
 		var err := (glass.volume - glass.target) / glass.target * 100.0
 		var extras: Array[String] = []

@@ -1,9 +1,9 @@
 class_name Hud
 extends CanvasLayer
-## Everything drawn over the game: timer, coins, streak multiplier, result
-## popups, banners and the F1 debug readout, in soft dark pills
+## Everything drawn over the game: timer, coins, streak multiplier, the
+## keyboard keys (KeyHints), result popups, banners and the F1 debug readout, in soft dark pills
 ## set in Fredoka. Purely visual — it never drives game logic (its tweens only
-## animate labels). Laid out by hand in the 640x360 HUD space (not with
+## animate what it draws). Laid out by hand in the 640x360 HUD space (not with
 ## containers) so positions are known the moment they change.
 
 const FONT_FILE := preload("res://fonts/Fredoka.ttf")
@@ -39,6 +39,8 @@ var streak_label: Label
 ## The big copy of a grown multiplier on its way to the counter (null otherwise).
 var streak_flyer: Label
 var banner_label: Label
+## The keyboard keys under the pourer and the glass and beside it (Main syncs them every tick).
+var keys: KeyHints
 var debug_label: Label
 
 var _coin_pill: Panel
@@ -106,6 +108,8 @@ func _ready() -> void:
 	timer_label.size = _timer_pill.size
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	keys = KeyHints.new()
+	root.add_child(keys)
 	banner_label = make_label(Vector2(0, 100), Palette.WHITE)
 	banner_label.size = Vector2(SCREEN_W, 70)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
