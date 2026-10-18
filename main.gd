@@ -22,12 +22,17 @@ enum Phase { INTRO, PLAYING, LAST_CALL, SHOP }
 const GLASS_POS := Vector2(256, 280)
 ## The static camera: the world point at the screen centre, and how much closer
 ## than 1:1 it shows the 640x360 world.
-const CAMERA_CENTER := Vector2(300, 186)
-const CAMERA_ZOOM := 1.75
+const CAMERA_CENTER := Vector2(300, 199)
+const CAMERA_ZOOM := 1.65
 const SCREEN_SIZE := Vector2(640, 360)
 ## The world rect the background image covers (art/background.png, 7 image px
 ## per world px; tools/background/bar.html draws it with the same numbers).
-const BACKGROUND_RECT := Rect2(110, 76, 380, 220)
+const BACKGROUND_RECT := Rect2(100, 84, 400, 230)
+## The counter lip's lower edge (world y; bar.html's LIP_BOTTOM): below it is
+## the bar's front, where the key row sits.
+const COUNTER_LIP_Y := 286.5
+## How much counter front (HUD units) the view shows below the lip for the key row.
+const KEY_ROOM := 34.0
 const INTRO_TIME := 1.5
 ## The last-call glass vanishes this long before the shop opens, so its popup reads.
 const SHOP_DELAY := 0.35

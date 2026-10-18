@@ -16,7 +16,8 @@ const BANNER_SIZE := 26
 const PILL_AT := Vector2(10, 8)
 const PILL_H := 22.0
 const PILL_PAD := 8.0
-const TIMER_PILL := Rect2(290, 8, 60, 22)
+## The timer, in the top-right corner (clear of the tipped pourers).
+const TIMER_PILL := Rect2(570, 8, 60, 22)
 ## Gap between the coin count and the multiplier (a thin divider sits in it).
 const STREAK_GAP := 13.0
 ## Where a grown multiplier pops up before flying to the coin counter, and how big.

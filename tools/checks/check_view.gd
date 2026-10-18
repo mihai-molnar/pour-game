@@ -1,13 +1,17 @@
 extends CheckBase
 ## Checks the camera framing: arriving vessels start off-screen, every vessel
 ## fits the view at rest and at its common pouring tilts without passing behind
-## a HUD pill (a pourer's third glass, tipped further, may), the counter edge
-## shows, the background covers the view, and world points map onto the
-## screen. Run:
+## a HUD pill (a pourer's third glass, tipped further, may; a pourer may pass
+## the top edge by TOP_GRACE), the counter front shows below the lip with room
+## for the key row, the timer sits top right, the background covers the view,
+## and world points map onto the screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=view
 
 ## Vessels stay this far inside the view (world px).
 const MARGIN := 2.0
+## How far a pourer may pass the view's top edge (world px): the wine bottle's
+## base grazes it at its steepest common pour.
+const TOP_GRACE := 2.0
 ## The steepest tilt past rest (°) a pourer reaches on its first two glasses
 ## from full (measured with the autopilot: pitcher 48° then up to 68°, bottle
 ## up to 54°); the third glass from a pourer may tip further.
@@ -28,8 +32,13 @@ func run() -> void:
 	expect(Glass.OFFSCREEN_X + 26.0 < view.position.x, "an arriving glass starts fully left of the view")
 	expect(Pourer.OFFSCREEN_X - 25.0 > view.end.x, "an arriving pourer starts fully right of the view")
 	expect(view.end.y >= 286.0, "the counter's front edge is in view (bottom %.1f)" % view.end.y)
+	near(Main.CAMERA_ZOOM, 1.65, "the camera zooms out a little for the key row", 0.001)
+	var room := (view.end.y - Main.COUNTER_LIP_Y) * Main.CAMERA_ZOOM
+	expect(room >= Main.KEY_ROOM, "the view shows %.1f HUD units of counter front below the lip" % room)
+	eq(Hud.TIMER_PILL.end.x, 630.0, "the timer pill sits in the top-right corner")
 
 	var inner := view.grow(-MARGIN)
+	var pourer_room := Rect2(inner.position.x, view.position.y - TOP_GRACE, inner.size.x, inner.end.y - view.position.y + TOP_GRACE)
 	var pills := [_rect_poly(Rect2(Hud.PILL_AT, Vector2(COIN_PILL_W, Hud.PILL_H))), _rect_poly(Hud.TIMER_PILL)]
 	for d: DrinkDef in [GameState.WATER, GameState.WINE]:
 		var glass := Transform2D(0.0, Main.GLASS_POS) * d.glass_outer
@@ -39,7 +48,7 @@ func run() -> void:
 		while tilt <= COMMON_TILT[d.id]:
 			var at := Transform2D(-deg_to_rad(d.pourer_rest_deg + tilt), lip)
 			var body := at * d.pourer_outer
-			expect(inner.encloses(_box(body + at * d.pourer_handle)), "%s pourer at tilt %d fits the view" % [d.id, tilt])
+			expect(pourer_room.encloses(_box(body + at * d.pourer_handle)), "%s pourer at tilt %d fits the view" % [d.id, tilt])
 			var hidden := _behind_pill(main, body, pills)
 			if d.pourer_handle.size() >= 2:
 				hidden = hidden or _behind_pill(main, at * d.pourer_handle, pills)

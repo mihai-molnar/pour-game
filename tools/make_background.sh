@@ -1,5 +1,5 @@
 #!/bin/bash
-# Renders tools/background/bar.html to art/background.png (2660x1540: the
+# Renders tools/background/bar.html to art/background.png (2800x1610: the
 # world rect main.gd's BACKGROUND_RECT names, at 7 image px per world px).
 # Needs Google Chrome; it loads the page headless with ?export, which writes
 # the canvas as a PNG data URL into the DOM, and decodes that.

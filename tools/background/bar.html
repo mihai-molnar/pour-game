@@ -16,14 +16,15 @@
   pixel. Open it in a browser to preview; tools/make_background.sh renders it to
   art/background.png (it loads the page with ?export and reads the PNG back).
 
-  Keep in sync with main.gd: BACKGROUND_RECT = Rect2(110, 76, 380, 220), the
-  counter top at y = 280 (where the vessels stand), the camera view about
-  x 117-483, y 83-289.
+  Keep in sync with main.gd: BACKGROUND_RECT = Rect2(100, 84, 400, 230), the
+  counter top at y = 280 (where the vessels stand), the lip's lower edge at
+  COUNTER_LIP_Y = 286.5 (below it the bar's front, where the HUD's key row
+  sits), the camera view about x 106-494, y 90-308.
 -->
 <canvas id="c"></canvas>
 <pre id="out"></pre>
 <script>
-const X0 = 110, Y0 = 76, WW = 380, WH = 220, PPU = 7;
+const X0 = 100, Y0 = 84, WW = 400, WH = 230, PPU = 7;
 const COUNTER_Y = 280;
 // The counter's top surface runs from its back edge to its front lip; the vessels stand at COUNTER_Y.
 const COUNTER_BACK = 273.5, COUNTER_FRONT = 283.5, LIP_BOTTOM = 286.5;
@@ -223,8 +224,25 @@ function drawNear(c) {
   c.fillRect(X0, COUNTER_FRONT, WW, LIP_BOTTOM - COUNTER_FRONT);
   c.fillStyle = hgrad(c, X0, X0 + WW, [[0, 'rgba(0,0,0,0.35)'], [0.4, 'rgba(0,0,0,0)'], [0.62, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.35)']]);
   c.fillRect(X0, COUNTER_FRONT, WW, LIP_BOTTOM - COUNTER_FRONT);
-  c.fillStyle = vgrad(c, LIP_BOTTOM, Y0 + WH, [[0, '#2a161b'], [1, '#140b10']]);
-  c.fillRect(X0, LIP_BOTTOM, WW, Y0 + WH - LIP_BOTTOM);
+  // the bar's front below the lip, where the key row sits: calm dark wood
+  const bottom = Y0 + WH;
+  c.fillStyle = vgrad(c, LIP_BOTTOM, bottom, [[0, '#2a161b'], [1, '#140b10']]);
+  c.fillRect(X0, LIP_BOTTOM, WW, bottom - LIP_BOTTOM);
+  c.save(); c.beginPath(); c.rect(X0, LIP_BOTTOM, WW, bottom - LIP_BOTTOM); c.clip();
+  for (let i = 0; i < 70; i++) {
+    const x = X0 + R() * WW;
+    c.strokeStyle = R() < 0.5 ? `rgba(0,0,0,${0.08 + R() * 0.08})` : `rgba(255,210,170,${0.015 + R() * 0.02})`;
+    c.lineWidth = 0.2 + R() * 0.3;
+    c.beginPath(); c.moveTo(x, LIP_BOTTOM); c.bezierCurveTo(x + R() - 0.5, LIP_BOTTOM + 8, x + R() - 0.5, bottom - 8, x + R() * 1.4 - 0.7, bottom); c.stroke();
+  }
+  for (const x of [176, 300, 424]) {
+    c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(x, LIP_BOTTOM, 0.5, bottom - LIP_BOTTOM);
+    c.fillStyle = 'rgba(255,210,170,0.035)'; c.fillRect(x + 0.5, LIP_BOTTOM, 0.35, bottom - LIP_BOTTOM);
+  }
+  glow(c, 296, LIP_BOTTOM + 2, 110, C.lamp, 0.05, 0.12);
+  c.fillStyle = vgrad(c, LIP_BOTTOM, LIP_BOTTOM + 4, [[0, 'rgba(0,0,0,0.5)'], [1, 'rgba(0,0,0,0)']]);
+  c.fillRect(X0, LIP_BOTTOM, WW, 4);
+  c.restore();
 }
 
 // ---------- compose ----------
