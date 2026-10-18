@@ -38,6 +38,10 @@ script = ExtResource("1_main")
 texture = ExtResource("2_bg")
 centered = false
 
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(300, 186)
+zoom = Vector2(1.8, 1.8)
+
 [node name="Glass" type="Node2D" parent="."]
 position = Vector2(256, 280)
 script = ExtResource("3_glass")

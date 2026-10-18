@@ -17,13 +17,19 @@ extends Node2D
 enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY }
 
 const GLASS_POS := Vector2(256, 280)
+## The static camera: the world point at the screen centre, and how much closer
+## than 1:1 it shows the 640x360 world.
+const CAMERA_CENTER := Vector2(300, 186)
+const CAMERA_ZOOM := 1.8
+const SCREEN_SIZE := Vector2(640, 360)
 const INTRO_TIME := 1.5
 ## The last-call glass vanishes this long before the summary appears, so its popup reads.
 const SUMMARY_DELAY := 0.35
 const LAST_CALL_IDLE := 3.0
 ## A glass counts as touched once it holds this share of its capacity; less can't be served.
 const ACTIVE_SHARE := 0.01
-const POPUP_POS := Vector2(256, 148)
+## Result popups float this far above the glass's rim (world px).
+const POPUP_ABOVE_RIM := 14.0
 const AUTOPLAY_SUMMARY_WAIT := 1.5
 const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
 
@@ -33,6 +39,7 @@ const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
 @onready var effects: Effects = $Effects
 @onready var hud: Hud = $Hud
 @onready var summary: RoundSummary = $RoundSummary
+@onready var camera: Camera2D = $Camera
 
 ## When true, _physics_process does nothing and a check script drives tick().
 var manual := false
@@ -62,6 +69,8 @@ var _shot_index := 0
 
 
 func _ready() -> void:
+	camera.position = CAMERA_CENTER
+	camera.zoom = Vector2.ONE * CAMERA_ZOOM
 	summary.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	pourer.landed.connect(_on_landed)
@@ -129,6 +138,17 @@ func _pick_drink() -> DrinkDef:
 		return d
 	var owned := GameState.owned_drinks
 	return owned[GameState.rng.randi_range(0, owned.size() - 1)]
+
+
+## The world rect the camera shows.
+static func view_rect() -> Rect2:
+	var size := SCREEN_SIZE / CAMERA_ZOOM
+	return Rect2(CAMERA_CENTER - size * 0.5, size)
+
+
+## A world point in HUD (screen) coordinates, through the static camera.
+func world_to_hud(p: Vector2) -> Vector2:
+	return (p - CAMERA_CENTER) * CAMERA_ZOOM + SCREEN_SIZE * 0.5
 
 
 func is_swapping() -> bool:
@@ -251,7 +271,7 @@ func _serve() -> void:
 	round_stats.best_mult = maxf(round_stats.best_mult, Scoring.multiplier(streak, GameState.stats))
 	round_stats.coins += r.coins
 	GameState.coins += r.coins
-	hud.popup(r, POPUP_POS)
+	hud.popup(r, world_to_hud(Vector2(GLASS_POS.x, glass.rim_y_world() - POPUP_ABOVE_RIM)))
 	effects.puff(glass.center_global())
 	if phase == Phase.LAST_CALL:
 		glass.vanish()
