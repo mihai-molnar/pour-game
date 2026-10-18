@@ -49,6 +49,7 @@ func run() -> void:
 
 	_check_ice(glass, water)
 	_check_lime(glass, water)
+	_check_ice_physics(glass, water)
 	_check_wine(glass, wine)
 	glass.setup(water)
 	expect(glass.capacity == 2346.0 and is_equal_approx(glass.target, want), "back to water: same capacity and target")
@@ -189,6 +190,66 @@ func _check_lime(glass: Glass, water: DrinkDef) -> void:
 	eq(glass.rows_from_line(glass.volume), 0, "the lime doesn't change the level")
 	for poly in GarnishArt.lime_polygons(Vector2.ZERO, 7.0, -0.6):
 		expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "the lime's polygons triangulate")
+
+
+## The cubes bounce and slide but always stay inside the glass, separate,
+## and come to rest; afloat they ride near the surface; the stream pushes them.
+func _check_ice_physics(glass: Glass, water: DrinkDef) -> void:
+	var ice: GarnishDef = water.garnishes[0]
+	var inside := true
+	var resting := true
+	var overlap := 0.0
+	var moved := false
+	var walls := _grown(glass.interior, 0.6)
+	for i in 30:
+		seed(100 + i)  # the physics' randomness is visual; a fixed seed repeats a failure
+		glass.setup(water)
+		glass.place(HOME)
+		glass.add_garnish(ice)
+		_steps(glass, Glass.ICE_FALL_TIME + DT)
+		expect(glass.ice != null and glass.ice.cubes.size() == 2, "drop %d: landed ice is simulated" % i)
+		if glass.ice == null:
+			return
+		var start: Vector2 = glass.ice.cubes[0].pos
+		var t := 0.0
+		while t < 1.2:
+			glass.step(DT)
+			t += DT
+			for c in glass.ice.cubes:
+				for p in glass.ice.corners(c):
+					inside = inside and Geometry2D.is_point_in_polygon(p, walls)
+		moved = moved or glass.ice.cubes[0].pos.distance_to(start) > 0.5
+		resting = resting and glass.ice.max_speed() < 3.0 and glass.ice.max_spin() < 0.3
+		overlap = maxf(overlap, _overlap(glass.ice.corners(glass.ice.cubes[0]), glass.ice.corners(glass.ice.cubes[1])))
+	expect(inside, "dropped into an empty glass, the cubes never leave it")
+	expect(moved, "...they move on landing instead of sticking where they fell")
+	expect(resting, "...and come to rest within about a second")
+	expect(overlap < 1.0, "...without sinking into each other (%.2f px²)" % overlap)
+	glass.setup(water)
+	glass.place(HOME)
+	glass.receive(HOME.x, glass.target - 216.0 * ice.float_share, 0.0)
+	glass.add_garnish(ice)
+	_steps(glass, Glass.ICE_FALL_TIME + 2.5)
+	var level := glass.surface_level(glass.volume)
+	for c in glass.ice.cubes:
+		near(c.pos.y, level + ice.cube_size * (ice.float_share - 0.5), "afloat at the line, a cube rides with float_share under", 2.5)
+	var before: Vector2 = glass.ice.cubes[0].vel
+	glass.receive(HOME.x + glass.ice.cubes[0].pos.x + 3.0, 40.0, 120.0)
+	expect(glass.ice.cubes[0].vel.x < before.x - 0.5, "liquid landing beside a cube pushes it away")
+	glass.arrive(water, HOME)
+	expect(glass.ice == null, "an arriving glass has no ice")
+	glass.place(HOME)
+
+
+func _grown(poly: PackedVector2Array, by: float) -> PackedVector2Array:
+	return Geometry2D.offset_polygon(poly, by)[0]
+
+
+func _overlap(a: PackedVector2Array, b: PackedVector2Array) -> float:
+	var area := 0.0
+	for p in Geometry2D.intersect_polygons(a, b):
+		area += Pourer.poly_area(p)
+	return area
 
 
 func _check_arrival(glass: Glass, water: DrinkDef) -> void:

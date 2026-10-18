@@ -62,7 +62,7 @@ static func font(weight := 600) -> FontVariation:
 	return _fonts[weight]
 
 
-## The soft dark pill behind HUD text (the round summary reuses it, less round).
+## The soft dark pill behind HUD text.
 static func pill_style(radius := 11) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = Color(Palette.INK, 0.62)

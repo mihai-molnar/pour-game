@@ -36,44 +36,95 @@ func run() -> void:
 	expect(GameState.owned_drinks == [water] and GameState.menu == [water] and GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(),
 		"reset_session clears purchases and the menu")
 
-	# The shop screen.
+	# The shop screen: a printed menu.
 	eq([Shop.card_state(10, false, 9), Shop.card_state(10, false, 10), Shop.card_state(10, true, 0)],
-		[Shop.CardState.CANT_AFFORD, Shop.CardState.CAN_BUY, Shop.CardState.OWNED], "card states")
+		[Shop.CardState.CANT_AFFORD, Shop.CardState.CAN_BUY, Shop.CardState.OWNED], "line states")
 	GameState.reset_session(1)
 	GameState.coins = 5
 	var shop: Shop = load("res://shop.gd").new()
 	add_child(shop)
 	shop.open()
 	eq(shop.tab, Shop.Tab.UPGRADES, "the shop opens on UPGRADES the first time")
-	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [ice, lime], "UPGRADES: water's ice and lime")
-	expect(shop.state_of(ice) == Shop.CardState.CANT_AFFORD and shop.cards[0].buy_button.disabled, "5 coins: ice is greyed out")
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime], "UPGRADES: water's ice and lime")
+	eq(shop.blacked_out_lines(), 5, "UPGRADES: 2 blacked-out water lines and 3 for wine")
+	expect(shop.state_of(ice) == Shop.CardState.CANT_AFFORD and shop.lines[0].price_button.disabled and shop.lines[0].faded, "5 coins: ice is printed faded")
 	GameState.coins = 20
 	shop.open()
-	expect(shop.state_of(ice) == Shop.CardState.CAN_BUY and not shop.cards[0].buy_button.disabled, "coins earned since: reopening refreshes the cards")
-	shop.cards[0].buy_button.pressed.emit()
-	shop.cards[0].buy_button.pressed.emit()
-	eq(GameState.coins, 10, "a double click on BUY spends 10 once")
-	expect(shop.state_of(ice) == Shop.CardState.OWNED and shop.cards[0].badge.visible, "ice shows OWNED")
-	eq(shop.coins_label.text, "10", "the coin pill follows")
+	expect(shop.state_of(ice) == Shop.CardState.CAN_BUY and not shop.lines[0].price_button.disabled, "coins earned since: reopening refreshes the lines")
+	shop.lines[0].price_button.pressed.emit()
+	shop.lines[0].price_button.pressed.emit()
+	eq(GameState.coins, 10, "a double click on the price spends 10 once")
+	expect(shop.state_of(ice) == Shop.CardState.OWNED and shop.lines[0].badge.visible and not shop.lines[0].price_button.visible, "ice shows OWNED")
+	eq(shop.coins_label.text, "10", "the coin total follows")
 	shop.show_tab(Shop.Tab.DRINKS)
-	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [wine], "DRINKS: wine")
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [wine], "DRINKS: wine")
+	eq(shop.blacked_out_lines(), 5, "...then 5 drinks to come, blacked out")
 	eq(shop.state_of(wine), Shop.CardState.CANT_AFFORD, "10 coins can't buy wine")
 	GameState.coins = 80
 	shop.show_tab(Shop.Tab.DRINKS)
 	expect(shop.buy(wine) and GameState.menu.has(wine) and shop.state_of(wine) == Shop.CardState.OWNED, "wine bought, on the menu")
 	shop.show_tab(Shop.Tab.MENU)
-	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [water, wine], "MENU: a card per owned drink")
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [water, wine], "MENU: a line per owned drink")
+	eq(shop.blacked_out_lines(), 0, "MENU: only what you own")
+	expect(shop.page.get_child_count() >= shop.lines.size() and shop.lines[0].get_parent() == shop.page, "the lines sit on the page")
 	expect(shop.toggle(water) and not GameState.menu.has(water), "water switched off")
-	expect(not shop.toggle(wine) and shop.cards[1].toggle_button.disabled and shop.cards[1].note.visible, "the last drink on can't be switched off")
+	expect(not shop.toggle(wine) and shop.lines[1].toggle_button.disabled and shop.lines[1].note.visible, "the last drink on can't be switched off")
 	var smallest := 99
-	for card in shop.cards:
-		for child in card.get_children():
-			if child is Label:
-				smallest = mini(smallest, (child as Label).get_theme_font_size("font_size"))
-	expect(smallest >= 9, "no card text under 9 HUD units (smallest %d)" % smallest)
+	for line in shop.lines:
+		for child in line.get_children():
+			if child is Label or child is Button:
+				smallest = mini(smallest, (child as Control).get_theme_font_size("font_size"))
+	expect(smallest >= 9, "no menu text under 9 HUD units (smallest %d)" % smallest)
 	shop.close()
 	shop.open()
 	eq(shop.tab, Shop.Tab.MENU, "the shop reopens on the last tab")
 	shop.toggle(water)
 	expect(GameState.menu.size() == 2, "water back on")
+	# Page turns.
+	GameState.coins = 999
+	shop.open()
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._finish_turn()
+	shop.show_tab(Shop.Tab.DRINKS)
+	expect(shop.is_turning() and shop.tab == Shop.Tab.DRINKS, "a tab click turns the page (the new page is underneath at once)")
+	var coins_before := GameState.coins
+	for line in shop.lines:
+		line.price_button.pressed.emit()
+	eq(GameState.coins, coins_before, "nothing can be bought mid-turn")
+	shop.show_tab(Shop.Tab.MENU)
+	expect(shop.is_turning() and shop.tab == Shop.Tab.MENU, "a tab clicked mid-turn finishes that turn and starts the next")
+	shop._turn_tween.custom_step(Shop.TURN_TIME + 0.05)
+	expect(not shop.is_turning(), "a turn takes TURN_TIME")
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._turn_tween.custom_step(Shop.TURN_TIME + 0.05)
+	expect(not shop.is_turning() and shop.tab == Shop.Tab.UPGRADES, "turning back works too")
+	shop.close()
+	shop.open()
+	expect(not shop.is_turning(), "opening the shop doesn't turn a page")
+	for t in [Shop.Tab.DRINKS, Shop.Tab.MENU, Shop.Tab.UPGRADES, Shop.Tab.MENU]:
+		shop.show_tab(t)
+		shop._finish_turn()
+		shop.open()
+		var stacked := true
+		for i in shop._tabs.size():
+			var in_front: bool = shop._tabs[i].get_index() > shop._paper.get_index()
+			stacked = stacked and in_front == (i == shop.tab)
+		expect(stacked, "after turning to %s, only its tab sits in front of the page" % Shop.TAB_NAMES[t])
 	shop.free()
+
+	# Menu art: printed-menu illustrations and marker bars, all drawable.
+	var polys: Array[PackedVector2Array] = []
+	polys.append_array(MenuArt.ice_polygons(Vector2.ZERO, 10.0))
+	polys.append_array(GarnishArt.lime_polygons(Vector2.ZERO, 9.0, Glass.LIME_ANGLE))
+	for d: DrinkDef in GameState.DRINKS:
+		polys.append_array(MenuArt.glass_polygons(d, Rect2(0, 0, 20, 24), d.fill_fraction))
+		polys.append_array(MenuArt.bottle_polygons(d, Rect2(0, 0, 14, 26)))
+	for i in 12:
+		polys.append(MenuArt.redacted_polygon(Rect2(0, 0, 60 + i * 9, 9), i))
+	var bad := 0
+	for p in polys:
+		if p.size() >= 3 and Geometry2D.triangulate_polygon(p).is_empty():
+			bad += 1
+	eq(bad, 0, "every menu illustration and marker bar triangulates (%d shapes)" % polys.size())
+	expect(MenuArt.redacted_polygon(Rect2(0, 0, 80, 9), 3) == MenuArt.redacted_polygon(Rect2(0, 0, 80, 9), 3), "a marker bar is the same every visit")
+	expect(MenuArt.title_font() != null and MenuArt.type_font(true) != null, "the menu fonts load")

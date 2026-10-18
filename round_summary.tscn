@@ -1,7 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://round_summary.gd" id="1_summary"]
-
-[node name="RoundSummary" type="CanvasLayer"]
-layer = 2
-script = ExtResource("1_summary")

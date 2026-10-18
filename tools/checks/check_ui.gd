@@ -1,5 +1,5 @@
 extends CheckBase
-## Checks HUD formatting/state, the round summary screen and the shop screen. Run:
+## Checks HUD formatting/state and the shop screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=ui
 
 
@@ -74,34 +74,15 @@ func run() -> void:
 	hud.toggle_debug()
 	eq(hud.is_debug_visible(), true, "F1 toggles debug")
 
-	var summary: RoundSummary = load("res://round_summary.tscn").instantiate()
-	add_child(summary)
-	eq(summary.visible, false, "summary starts hidden")
-	summary.show_results(3, {"served": 7, "perfects": 2, "best_mult": 1.7, "coins": 55}, 120)
-	eq(summary.visible, true, "show_results shows it")
-	var text := summary.body_text()
-	for want in ["GLASSES", "7", "PERFECT", "2", "x1.7", "+55", "120"]:
-		eq(text.contains(want), true, "summary shows %s" % want)
-	var pressed := [false]
-	summary.next_pressed.connect(func() -> void: pressed[0] = true)
 	var space := InputEventKey.new()
 	space.physical_keycode = KEY_SPACE
 	space.pressed = true
-	summary._unhandled_input(space)
-	eq(pressed[0] == false and summary.visible, true, "Space right after show_results is ignored (input lock)")
-	summary._next()
-	eq(pressed[0] == false and summary.visible, true, "the button is locked too")
-	summary.input_lock = 0.0
-	summary._unhandled_input(space)
-	eq(pressed[0], true, "Space on the summary emits next_pressed")
-	eq(summary.visible, false, "...and hides it")
-	eq(summary._button.text, "TO THE SHOP  (SPACE)", "the summary leads to the shop")
 
 	var shop: Shop = load("res://shop.gd").new()
 	add_child(shop)
 	eq(shop.visible, false, "the shop starts hidden")
 	shop.open()
-	eq(shop.next_button.text, "NEXT ROUND  (SPACE)", "NEXT ROUND button")
+	eq(shop.next_button.text, "NEXT ROUND · SPACE", "NEXT ROUND line")
 	eq(shop.TAB_NAMES, ["UPGRADES", "DRINKS", "MENU"], "the shop's tabs")
 	var left := [false]
 	shop.next_pressed.connect(func() -> void: left[0] = true)
@@ -111,6 +92,12 @@ func run() -> void:
 	shop.input_lock = 0.0
 	shop._unhandled_input(space)
 	eq(left[0] and not shop.visible, true, "Space in the shop emits next_pressed and hides it")
+	eq(Shop.round_line(2, {"served": 6, "perfects": 4, "best_mult": 1.6, "coins": 134}), "ROUND 2 · 6 GLASSES · 4 PERFECT · BEST x1.6 · +134", "round line")
+	eq(Shop.round_line(3, {"served": 1, "perfects": 0, "best_mult": 1.0, "coins": -6}), "ROUND 3 · 1 GLASS · 0 PERFECT · BEST x1 · -6", "...one glass, a loss")
+	shop.open()
+	eq(shop.round_line_label.visible, false, "no round line before any round (--shop at startup)")
+	shop.open("ROUND 1 · 2 GLASSES · 1 PERFECT · BEST x1.2 · +20")
+	eq([shop.round_line_label.visible, shop.round_line_label.text], [true, "ROUND 1 · 2 GLASSES · 1 PERFECT · BEST x1.2 · +20"], "...shown after one")
 
 	var fx: Effects = load("res://effects.gd").new()
 	add_child(fx)

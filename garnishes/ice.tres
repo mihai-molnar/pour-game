@@ -10,4 +10,6 @@ description = "Water pays +20%"
 price = 10
 bonus = 0.2
 kind = 0
+cube_size = 10.4
+cube_count = 2
 key = 4194320

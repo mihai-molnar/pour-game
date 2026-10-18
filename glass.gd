@@ -12,7 +12,8 @@ extends Node2D
 ## turns the Liquid and Front layers, never this node, so landing liquid and
 ## the rim/opening helpers never see it. It holds the garnishes added while it
 ## is served: ice falls in and takes up room (surface_level, max_liquid — what
-## is drawn and scored), a lime wedge drops onto the left rim.
+## is drawn and scored) and, once landed, bounces, floats and drifts in a small
+## visual-only simulation (IcePhysics); a lime wedge drops onto the left rim.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -41,9 +42,11 @@ const LIME_DROP_PX := 14.0
 ## The lime wedge: radius (px) and turn (rad; peel up and out to the left).
 const LIME_RADIUS := 9.0
 const LIME_ANGLE := -0.7
-## Per cube: x nudge (px), resting tilt (rad), tumble while falling (rad), how
-## much deeper it floats (px) — so the cubes don't line up like soldiers.
-const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4), Vector4(0.2, -0.05, 1.9, 0.9)]
+## Per cube while it falls in: x nudge (px), tilt (rad), tumble (rad), how much
+## deeper it lands (px) — so the cubes don't drop like soldiers.
+const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4)]
+## The fastest a cube enters the glass (px/s): the scripted fall ends faster.
+const ICE_ENTRY_SPEED := 220.0
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -77,8 +80,10 @@ var _arrive_t := -1.0  # < 0 when not arriving (covers the slide and the wobble)
 var _pivot := Vector2.ZERO
 ## The garnishes added to this glass, in order (landed or still dropping).
 var garnishes: Array[GarnishDef] = []
-## Draw the scoring band and the fill line (previews in the shop turn them off).
+## Draw the scoring band and the fill line (off for a glass drawn elsewhere).
 var show_marks := true
+## The landed ice cubes' simulation (null until ice lands).
+var ice: IcePhysics
 var _garnish_t: Array[float] = []  # seconds since each garnish was added
 var _floor_y := 0.0  # local y of the interior's floor
 var _clock := 0.0  # visual time, for the cubes' drift
@@ -130,6 +135,7 @@ func reset() -> void:
 	_drips.clear()
 	garnishes.clear()
 	_garnish_t.clear()
+	ice = null
 
 
 ## Adds a garnish: ice starts falling, the lime starts dropping onto the rim.
@@ -454,6 +460,8 @@ func surface_y_world_at(x_world: float) -> float:
 func receive(x_world: float, vol: float, speed: float) -> void:
 	volume += vol
 	_overflow()
+	if ice != null:
+		ice.push(x_world - global_position.x, vol * speed * 0.004)
 	var c := _col(x_world)
 	var kick := vol * speed * impact_gain
 	_wave_v[c] -= kick
@@ -490,11 +498,16 @@ func _step_garnishes(dt: float) -> void:
 		if was < _drop_time(g) and _garnish_t[i] >= _drop_time(g):
 			if g.kind == GarnishDef.Kind.ICE:
 				_overflow()
+				var poses := _cube_poses(g)
 				if volume >= 0.5:  # a splash: the cubes knock the surface down
-					for pose in _cube_poses(g):
+					for pose in poses:
 						var c := clampi(floori(pose.x) - _x0, 0, _wave_v.size() - 1)
 						for k in range(maxi(c - 3, 0), mini(c + 4, _wave_v.size())):
 							_wave_v[k] -= 9.0
+				# From here the cubes move by themselves (visual randomness only).
+				ice = IcePhysics.new(g.cube_size, g.float_share)
+				for pose in poses:
+					ice.add(Vector2(pose.x, pose.y), Vector2(randf_range(-40.0, 40.0), ICE_ENTRY_SPEED), pose.z, randf_range(-6.0, 6.0))
 				garnish_landed.emit(g, to_global(Vector2(0.0, surface_level(volume))))
 			else:
 				garnish_landed.emit(g, to_global(_lime_slit()))
@@ -526,6 +539,9 @@ func step(dt: float) -> void:
 		for i in n:
 			_wave_h[i] = clampf(_wave_h[i] + _wave_v[i] * sdt, -wave_max, wave_max)
 
+	if ice != null:
+		ice.step(dt, interior, _surface_at)
+
 	for i in range(_bubbles.size() - 1, -1, -1):
 		var b := _bubbles[i]
 		b.y -= b.z * dt
@@ -551,12 +567,16 @@ func step(dt: float) -> void:
 	_front.queue_redraw()
 
 
-## Where each ice cube is drawn (local x, y of its centre, tilt): spread
-## across the glass, standing on the floor in shallow liquid, floating with a
-## sliver above the surface and bobbing on the waves once it is deep enough;
-## while falling, on its way down from above the view, tumbling.
+## Where each ice cube is drawn (local x, y of its centre, tilt): once landed,
+## wherever the simulation has it; while falling, on its way down from above
+## the view, tumbling, to where it lands — spread across the glass, on the
+## floor or, in liquid, floating with a sliver above the surface.
 func _cube_poses(g: GarnishDef) -> Array[Vector3]:
 	var poses: Array[Vector3] = []
+	if ice != null:
+		for c in ice.cubes:
+			poses.append(Vector3(c.pos.x, c.pos.y, c.angle))
+		return poses
 	var t := _garnish_t[garnishes.find(g)]
 	var s := g.cube_size
 	var calm := surface_level(volume) if t >= ICE_FALL_TIME else level_for(volume)
@@ -582,6 +602,13 @@ func _cube_poses(g: GarnishDef) -> Array[Vector3]:
 			angle += (1.0 - u) * look.z
 		poses.append(Vector3(x, y, angle))
 	return poses
+
+
+## The liquid surface's local y at local x for the ice simulation (INF when empty).
+func _surface_at(x: float) -> float:
+	if volume < 0.5:
+		return INF
+	return _level - _wave_h[clampi(floori(x) - _x0, 0, _wave_h.size() - 1)]
 
 
 ## Where the lime's slit sits on the left rim (local).
