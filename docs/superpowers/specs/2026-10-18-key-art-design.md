@@ -32,7 +32,13 @@ Settled with the user (2026-10-18):
   loading state.
 - **SPACE under the glass.** It does **not glow**: it **appears** when the
   drink can be served and is **absent otherwise** — in particular there is
-  no SPACE key while the glass is empty.
+  no SPACE key while the glass is empty. **Revised after the first look
+  (2026-10-18):** "the spacebar does not appear midpour, I think it should. I
+  think it should only be missing on an empty glass, nothing more" — SPACE
+  shows whenever the glass has something in it (≥ `ACTIVE_SHARE`), mid-pour,
+  while a garnish falls and during a refill included. Pressed mid-pour (the
+  serve queues), it stays held down until the serve fires (builder's call:
+  the feedback "SERVING..." used to give).
 - **Garnish keys:** UP **above** the glass, LEFT on the glass's **left**
   side. Each carries a **drawing of its garnish** (ice cube, lime wedge).
   Each **disappears once its garnish has been added**; they come back for
@@ -57,8 +63,8 @@ Played back to the user as guesses and accepted ("looks right, write it up"):
 - The DOWN key dims briefly while a new pourer slides in or a bottle is
   still corked (DOWN does nothing then).
 - SPACE pops in when it appears and shrinks away when it goes; it presses
-  down when hit. If the player pours more after it appeared, it hides again
-  until that pour has landed.
+  down when hit. (Superseded: it no longer hides while pouring — see the
+  revision above.)
 - Garnish keys appear only once the glass has landed; a pressed garnish key
   presses down and vanishes as the garnish goes in.
 - All the keys hide in the shop and during the round intro. The shop's own
@@ -85,14 +91,13 @@ no glass). Within that:
 | Key | Shown when |
 |---|---|
 | DOWN | always (dimmed while the pourer is arriving or corked but not refilling; the loading ring while `pourer.refilling`) |
-| SPACE | a press would serve **right now**: not swapping (`!is_swapping()`), pourer not busy, glass volume ≥ `ACTIVE_SHARE` of capacity, `!pourer.is_pouring()`, `stream.is_empty()`, `!glass.garnish_busy()`, no serve already queued, the round not already ending (`_shop_in < 0`) |
+| SPACE | the glass has something in it: glass volume ≥ `ACTIVE_SHARE` of capacity, the round not already ending (`_shop_in < 0`) — `Main.glass_has_drink()` (revised; it first meant "a press would serve right now"). Held down while `Main.is_serve_queued()` |
 | garnish (one per garnish) | the current drink has the garnish, the player owns it, it isn't on the glass yet, and `try_garnish` would accept it now (glass visible and landed, serving phase, round not ending) |
 
-These rules should live in one place in `Main` (e.g. a `can_serve_now()`
-and a "which garnish keys" query) that both the HUD and the checks read, so
-the key on screen can never disagree with what a press would do. Note that
-SPACE is still *accepted* while pouring (it queues a serve, as now) — the
-key just isn't shown then. That is intended: the key advertises "serve now".
+These rules live in one place in `Main` (`glass_has_drink()`,
+`is_serve_queued()` and the "which garnish keys" query `garnish_keys()`)
+that both the HUD and the checks read. SPACE pressed mid-pour queues the
+serve, as before; the key shows and stays down until it fires.
 
 Visibility must be a deterministic function of game state computed when the
 HUD refreshes (so the checks, which drive `tick()` themselves, can assert
@@ -234,10 +239,9 @@ Also:
 ## Verification
 
 - A new check (e.g. `check_keys`) drives `tick()` and asserts the visibility
-  table above: no SPACE on an empty glass; SPACE appears after a pour has
-  landed and hides while pouring again; SPACE hidden while a garnish falls,
-  while a glass or pourer arrives, while the pourer refills, after a serve
-  is queued; garnish keys only for owned garnishes of the current drink,
+  table above: no SPACE on an empty glass; SPACE as soon as something is in
+  the glass, mid-pour, while a garnish falls and through a refill; held down
+  from a serve queued mid-pour until it fires; garnish keys only for owned garnishes of the current drink,
   only once the glass has landed, gone once added, back on the next glass;
   none on wine; DOWN dimmed while arriving/corked, ring while refilling with
   progress rising to 1 as the refill ends (both refill styles); no keys
@@ -250,7 +254,7 @@ Also:
 - All existing checks pass; `--sweep` and `--sweep=wine` output unchanged.
 - A windowed `--autoplay --shots` run (with `--coins` so ice, lime and wine
   get bought) to look at the keys at 1280×720: DOWN pressed while pouring,
-  the refill ring, SPACE appearing after a pour lands, UP/LEFT vanishing as
+  the refill ring, SPACE appearing once the pour starts filling, UP/LEFT vanishing as
   the autopilot adds garnishes, no garnish keys on wine. Check the log for
   `SHADER ERROR` / triangulation errors.
 - `CLAUDE.md` updated (current state, the camera numbers, the timer's new

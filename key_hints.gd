@@ -3,10 +3,11 @@ extends Control
 ## The keyboard keys over the bar, where each action happens
 ## (docs/superpowers/specs/2026-10-18-key-art-design.md): DOWN on the counter
 ## front under the pourer (a refill ring while it refills, dim while a new
-## one arrives or is corked), SPACE under the glass only when a press would
-## serve at once, and the garnish keys a press would add beside the glass —
-## UP above it, LEFT on its left. Laid out in HUD units from world points;
-## sync(main) reads Main's rules every tick and never changes game state.
+## one arrives or is corked), SPACE under the glass whenever it has something
+## in it (held down while a serve waits for the pour), and the garnish keys a
+## press would add beside the glass — UP above it, LEFT on its left. Laid out
+## in HUD units from world points; sync(main) reads Main's rules every tick
+## and never changes game state.
 
 ## Gap (HUD units) between the counter lip and the top of the key row.
 const ROW_GAP := 5.0
@@ -52,7 +53,8 @@ func sync(main: Main) -> void:
 	down.dim = pourer.is_busy() and not pourer.refilling
 	down.progress = pourer.refill_progress() if pourer.refilling else -1.0
 	down.set_shown(on)
-	space.set_shown(on and main.can_serve_now())
+	space.pressed = main.is_serve_queued()
+	space.set_shown(on and main.glass_has_drink())
 	var want: Array[GarnishDef] = []
 	if on:
 		want = main.garnish_keys()

@@ -39,16 +39,16 @@ func _run(seconds: float, hold := false) -> void:
 		t += DT
 
 
-## Ticks with `hold` until `done` is true (at most `limit` s); true if any tick
-## along the way could serve.
-func _until(done: Callable, hold: bool, limit := 6.0) -> bool:
-	var could := false
+## Ticks with `hold` until `done` is true (at most `limit` s); true if `bad`
+## was true on any tick along the way.
+func _until(done: Callable, hold: bool, bad := func() -> bool: return false, limit := 6.0) -> bool:
+	var seen := false
 	var t := 0.0
 	while not done.call() and t < limit:
-		could = could or main.can_serve_now()
+		seen = seen or bad.call()
 		main.tick(DT, hold)
 		t += DT
-	return could
+	return seen
 
 
 func _garnish_ids() -> Array[StringName]:
@@ -58,38 +58,39 @@ func _garnish_ids() -> Array[StringName]:
 	return ids
 
 
+## SPACE shows whenever the glass has something in it (spec, revised after
+## the first look: "only missing on an empty glass, nothing more").
 func _space_rules() -> void:
+	var keys: KeyHints = main.hud.keys
+	var no_space := func() -> bool: return not main.glass_has_drink()
 	_fresh()
-	expect(not main.can_serve_now(), "no SPACE during INTRO")
+	expect(not main.glass_has_drink(), "no SPACE during INTRO")
 	_run(Main.INTRO_TIME + DT)
-	expect(not main.can_serve_now(), "no SPACE on an empty glass")
-	_until(main.pourer.is_pouring, true)
-	expect(main.pourer.is_pouring() and not main.can_serve_now(), "no SPACE while pouring")
-	_run(0.4, true)
-	_until(func() -> bool: return not main.pourer.is_pouring() and main.stream.is_empty(), false)
-	expect(main.can_serve_now(), "SPACE once the pour has landed")
-	_until(main.pourer.is_pouring, true)
-	expect(not main.can_serve_now(), "SPACE hides when pouring again")
+	expect(not main.glass_has_drink(), "no SPACE on an empty glass")
+	_until(func() -> bool: return main.glass.volume >= main.glass.capacity * Main.ACTIVE_SHARE, true)
+	expect(main.pourer.is_pouring() and main.glass_has_drink(), "SPACE mid-pour once something is in the glass")
 	main.request_serve()
-	var shown := _until(main.is_swapping, false)
-	expect(main.is_swapping() and not shown, "a serve queued mid-pour never shows SPACE before it fires")
+	main.tick(DT, true)
+	expect(keys.space.shown and keys.space.pressed, "a serve queued mid-pour holds SPACE down")
+	var gap := _until(main.is_swapping, false, no_space)
+	expect(main.is_swapping() and not gap, "...and SPACE stays until the serve fires")
 	_run(0.5)
-	expect(not main.glass.is_arriving() and not main.can_serve_now(), "the next glass lands empty: no SPACE")
+	expect(not main.glass.is_arriving() and not main.glass_has_drink(), "the next glass lands empty: no SPACE")
 	main.glass.receive(Main.GLASS_POS.x, main.glass.target, 0.0)
-	expect(main.can_serve_now(), "SPACE on a filled, still glass")
+	main.tick(DT, false)
+	expect(main.glass_has_drink() and keys.space.shown and not keys.space.pressed, "SPACE, up, on a filled glass")
 	main.pourer.volume = 0.0
 	main.tick(DT, false)
 	expect(main.pourer.refilling, "the pourer refills")
-	shown = _until(func() -> bool: return not main.pourer.refilling, false)
-	expect(not shown, "no SPACE for the whole refill")
-	expect(main.can_serve_now(), "...and SPACE again after it")
+	gap = _until(func() -> bool: return not main.pourer.refilling, false, no_space)
+	expect(not gap, "SPACE stays through a refill")
 	main.time_left = 0.01
 	main.tick(DT, false)
-	expect(main.phase == Main.Phase.LAST_CALL and main.can_serve_now(), "SPACE in LAST CALL with liquid in")
+	expect(main.phase == Main.Phase.LAST_CALL and main.glass_has_drink(), "SPACE in LAST CALL with liquid in")
 	_until(func() -> bool: return main._shop_in >= 0.0, false)
-	expect(main._shop_in >= 0.0 and not main.can_serve_now(), "no SPACE once the last glass is served")
+	expect(main._shop_in >= 0.0 and not main.glass_has_drink(), "no SPACE once the last glass is served")
 	_run(1.0)
-	expect(main.phase == Main.Phase.SHOP and not main.can_serve_now(), "no SPACE in the shop")
+	expect(main.phase == Main.Phase.SHOP and not main.glass_has_drink(), "no SPACE in the shop")
 
 
 func _garnish_rules() -> void:
@@ -107,9 +108,8 @@ func _garnish_rules() -> void:
 	main.glass.receive(Main.GLASS_POS.x, main.glass.target * 0.5, 0.0)
 	main.try_garnish(KEY_UP)
 	eq(_garnish_ids(), [&"lime"], "ice in: only LEFT is left")
-	expect(not main.can_serve_now(), "no SPACE while the ice falls")
+	expect(main.glass_has_drink(), "SPACE stays while the ice falls")
 	_run(Glass.ICE_FALL_TIME + DT)
-	expect(main.can_serve_now(), "SPACE once the ice has landed")
 	main.try_garnish(KEY_LEFT)
 	expect(main.garnish_keys().is_empty(), "both on: no garnish keys")
 	_run(Glass.LIME_DROP_TIME + DT)
@@ -153,8 +153,10 @@ func _key_mismatches() -> Array[String]:
 	var on := main.is_serving_phase() and main._shop_in < 0.0
 	if keys.down.shown != on:
 		bad.append("DOWN %s in %s" % [keys.down.shown, Main.Phase.keys()[main.phase]])
-	if keys.space.shown != main.can_serve_now():
-		bad.append("SPACE %s, can_serve_now %s" % [keys.space.shown, main.can_serve_now()])
+	if keys.space.shown != main.glass_has_drink():
+		bad.append("SPACE %s, glass_has_drink %s" % [keys.space.shown, main.glass_has_drink()])
+	if keys.space.shown and keys.space.pressed != main.is_serve_queued():
+		bad.append("SPACE pressed %s, serve queued %s" % [keys.space.pressed, main.is_serve_queued()])
 	var want := main.garnish_keys()
 	for g in want:
 		var cap: Keycap = keys.garnish_caps.get(g.key)

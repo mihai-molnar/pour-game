@@ -238,12 +238,16 @@ func garnish_keys() -> Array[GarnishDef]:
 	return out
 
 
-## True when Space would serve the glass at once (not merely queue it): the
-## SPACE key shows only then.
-func can_serve_now() -> bool:
-	return is_serving_phase() and _shop_in < 0.0 and not _serve_queued and not is_swapping() \
-		and not pourer.is_busy() and glass.visible and glass.volume >= glass.capacity * ACTIVE_SHARE \
-		and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy()
+## True while serving with something (ACTIVE_SHARE or more) in the glass:
+## the SPACE key shows then — mid-pour too, where a press queues the serve
+## until the pour lands. Only an empty glass has no SPACE key.
+func glass_has_drink() -> bool:
+	return is_serving_phase() and _shop_in < 0.0 and glass.visible and glass.volume >= glass.capacity * ACTIVE_SHARE
+
+
+## True while a serve waits for the pour to land (the SPACE key stays down).
+func is_serve_queued() -> bool:
+	return _serve_queued
 
 
 func request_serve() -> void:
