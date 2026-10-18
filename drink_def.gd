@@ -101,9 +101,29 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 ## Exit speed grows with sqrt(excess), like a weir.
 @export var stream_speed_k := 5.0
 
+@export_group("Foam")
+## Share of landing beer that turns into foam at a trickle (landing at
+## foam_rate_slow px²/s or less) and at full speed (foam_rate_fast or more),
+## linear between. 0 = no head at all (water, wine).
+@export var foam_share_slow := 0.0
+@export var foam_share_fast := 0.0
+@export var foam_rate_slow := 150.0
+@export var foam_rate_fast := 900.0
+## Beer per px² of fresh (wet) foam and of drained (dry) foam.
+@export var foam_wet_share := 0.2
+@export var foam_dry_share := 0.05
+## Time constants (s): wet foam draining toward dry; the head collapsing.
+@export var foam_drain_time := 1.2
+@export var foam_collapse_time := 40.0
+
 @export_group("Slosh")
 @export var slosh_spring := 60.0
 @export var slosh_damp := 4.0
 ## How strongly tilt acceleration sloshes the surface (braking surges liquid toward the spout).
 @export var slosh_gain := 0.04
 @export var slosh_max := 0.25
+
+
+## True if pouring it makes a head (beer).
+func has_foam() -> bool:
+	return foam_share_fast > 0.0
