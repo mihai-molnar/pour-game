@@ -36,6 +36,7 @@ func run() -> void:
 	_iced_round_with_autopilot()
 	_serve_waits_for_an_upright_glass()
 	_last_call_waits_for_an_upright_glass()
+	_beer_brings_a_new_bottle()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -592,3 +593,28 @@ func _last_call_waits_for_an_upright_glass() -> void:
 		t += DT
 	expect(t >= Main.LAST_CALL_IDLE + Glass.TILT_GRACE, "last call's idle starts once the glass is upright (served at %.2f s)" % t)
 	expect(main.results.size() == served + 1 and t < Main.LAST_CALL_IDLE + 1.0, "...then it auto-serves (%.2f s)" % t)
+
+
+## Every beer glass comes with its own new, full, capped bottle, whatever was
+## left in the last one; wine keeps its bottle across glasses.
+func _beer_brings_a_new_bottle() -> void:
+	_fresh()
+	GameState.owned_drinks.append(GameState.BEER)
+	GameState.menu.append(GameState.BEER)
+	GameState.new_drinks.append(GameState.BEER)  # start_round() opens with it
+	main.start_round()
+	_run(Main.INTRO_TIME + DT)
+	expect(main.drink == GameState.BEER, "the round opens with beer")
+	var pops := [0]
+	var count := func(_a: Vector2, _v: Vector2, _c: Color) -> void: pops[0] += 1
+	main.pourer.popped.connect(count)
+	main.pourer.volume = main.pourer.full_volume * 0.4  # what was left of the last bottle
+	_serve_with_next(GameState.BEER)
+	expect(main.pourer.is_arriving() and main.pourer.corked, "the next beer brings a new, capped bottle")
+	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + DT)
+	expect(pops[0] == 1 and main.pourer.volume == main.pourer.full_volume, "...full, its cap popped (%d pops)" % pops[0])
+	main.pourer.popped.disconnect(count)
+	_serve_with_next(GameState.WINE)
+	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + DT)
+	_serve_with_next(GameState.WINE)
+	expect(not main.pourer.is_arriving(), "wine still keeps its bottle across glasses")

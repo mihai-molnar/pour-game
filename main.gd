@@ -93,7 +93,7 @@ func _ready() -> void:
 	glass.garnish_landed.connect(_on_garnish_landed)
 	pourer.landed.connect(_on_landed)
 	pourer.vanished.connect(effects.puff)
-	pourer.popped.connect(effects.cork)
+	pourer.popped.connect(_on_popped)
 	var args := _parse_args()
 	if args.has("seed"):
 		GameState.rng.seed = int(args["seed"])
@@ -355,7 +355,8 @@ func _on_time_up() -> void:
 
 
 ## Scores the glass; it vanishes and (unless it's last call) the next glass
-## arrives — with the other pourer when the drink changes.
+## arrives — with the other pourer when the drink changes, and with a new
+## bottle after every beer.
 func _serve() -> void:
 	_serve_queued = false
 	if glass.volume < glass.capacity * ACTIVE_SHARE:
@@ -381,12 +382,20 @@ func _serve() -> void:
 		_shop_in = SHOP_DELAY
 		return
 	var next := _pick_drink()
-	if next != drink:
+	if next != drink or drink.bottle_per_glass:
 		effects.puff(pourer.center_global())
 		pourer.arrive(next, GLASS_POS + next.pourer_offset)
 		stream.set_drink(next)
 	drink = next
 	glass.arrive(drink, GLASS_POS)
+
+
+## A bottle opened: a cork pops out of wine, a crown cap flies off beer.
+func _on_popped(at: Vector2, velocity: Vector2, spray: Color) -> void:
+	if pourer.def.bottle_look == DrinkDef.BottleLook.BEER:
+		effects.cap(at, velocity, spray)
+	else:
+		effects.cork(at, velocity, spray)
 
 
 ## Ice landing in liquid splashes.

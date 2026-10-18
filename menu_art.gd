@@ -137,12 +137,16 @@ static func draw_bottle(ci: CanvasItem, d: DrinkDef, box: Rect2) -> void:
 	var bottle := d.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE
 	ci.draw_colored_polygon(polys[0], Color(d.pourer_glass_color, 0.85) if bottle else Color(Palette.FROST, 0.35))
 	var i := 1
+	var beer := d.bottle_look == DrinkDef.BottleLook.BEER
 	if d.pourer_label.has_area():
 		ci.draw_colored_polygon(polys[i], Palette.LABEL)
+		if beer:  # the label's red band
+			var r := _bounds(polys[i])
+			ci.draw_rect(Rect2(r.position.x, r.position.y + r.size.y * 0.44, r.size.x, r.size.y * 0.22), Palette.BEER_LABEL)
 		_outline(ci, polys[i], Color(Palette.MENU_INK, 0.6), 0.4)
 		i += 1
 	if d.pourer_foil.has_area():
-		ci.draw_colored_polygon(polys[i], Palette.WINE)
+		ci.draw_colored_polygon(polys[i], Palette.BEER_LABEL if beer else Palette.WINE)
 	if d.pourer_handle.size() >= 2:
 		ci.draw_polyline(_fit(d.pourer_handle, _bounds(d.pourer_outer + d.pourer_handle), box), Palette.MENU_INK, LINE, true)
 	_outline(ci, polys[0], Palette.MENU_INK)

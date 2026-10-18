@@ -128,6 +128,34 @@ static func draw_cork(ci: CanvasItem, r: Rect2, alpha := 1.0) -> void:
 		ci.draw_circle(r.position + Vector2(f.x, f.y) * r.size, absf(f.z), color)
 
 
+## A crown cap filling `r`: a rounded top, straight sides and a crimped
+## lower edge (9 teeth).
+static func crown_cap_polygon(r: Rect2) -> PackedVector2Array:
+	var teeth := 9
+	var tooth := minf(r.size.y * 0.3, 0.9)
+	var pts := PackedVector2Array([r.position + Vector2(0.6, 0.0), Vector2(r.end.x - 0.6, r.position.y), Vector2(r.end.x, r.position.y + 0.6)])
+	for i in teeth * 2 + 1:
+		pts.append(Vector2(r.end.x - r.size.x * i / (teeth * 2), r.end.y - (0.0 if i % 2 == 1 else tooth)))
+	pts.append(r.position + Vector2(0.0, 0.6))
+	return pts
+
+
+static var _cap: GradientTexture1D
+
+
+## A gold crown cap filling `r`: shaded round, a lighter top, a dark outline, a glint.
+static func draw_crown_cap(ci: CanvasItem, r: Rect2, alpha := 1.0) -> void:
+	if _cap == null:
+		_cap = gradient([[0.0, Palette.CAP_GOLD.darkened(0.4)], [0.3, Palette.CAP_GOLD.lightened(0.3)], [0.6, Palette.CAP_GOLD], [1.0, Palette.CAP_GOLD.darkened(0.5)]])
+	var poly := crown_cap_polygon(r)
+	draw_hgradient(ci, poly, r.position.x, r.end.x, _cap, Color(1, 1, 1, alpha))
+	ci.draw_rect(Rect2(r.position.x + 0.6, r.position.y + 0.15, r.size.x - 1.2, r.size.y * 0.3), Color(Palette.CAP_GOLD.lightened(0.45), 0.55 * alpha))
+	var closed := poly.duplicate()
+	closed.append(poly[0])
+	ci.draw_polyline(closed, Color(Palette.INK, 0.45 * alpha), 0.35, true)
+	ci.draw_line(r.position + Vector2(r.size.x * 0.22, 0.5), r.position + Vector2(r.size.x * 0.22, r.size.y - 1.2), Color(Palette.WHITE, 0.6 * alpha), 0.4, true)
+
+
 ## Left and right x where the horizontal line at `y` crosses `poly` (INF/-INF if it misses).
 static func span_at(poly: PackedVector2Array, y: float) -> Vector2:
 	var lo := INF

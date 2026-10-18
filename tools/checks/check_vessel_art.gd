@@ -21,7 +21,7 @@ func run() -> void:
 	near(Pourer.poly_area(spout) / Pourer.poly_area(water.pourer_interior), 1.0, "a concave corner (the spout) rounds too, area kept", 0.02)
 	expect(not Geometry2D.triangulate_polygon(VesselArt.rounded(wine.glass_outer, 5.0)).is_empty(), "the rounded wine glass (thin stem) triangulates")
 
-	for d: DrinkDef in [water, wine]:
+	for d: DrinkDef in GameState.DRINKS:
 		for pair in [[d.glass_outer, d.glass_interior], [d.pourer_outer, d.pourer_interior]]:
 			var walls := VesselArt.walls(pair[0], pair[1])
 			var a := 0.0
@@ -31,6 +31,9 @@ func run() -> void:
 			var expected := Pourer.poly_area(pair[0]) - Pourer.poly_area(pair[1])
 			expect(a <= expected + 1.0 and a > expected * 0.8, "%s: open-top wall area (%.0f of %.0f)" % [d.id, a, expected])
 			expect(not walls.is_empty() and not _covers(walls, _centroid(pair[1])), "%s: walls leave the inside clear" % d.id)
+
+	expect(not Geometry2D.triangulate_polygon(VesselArt.crown_cap_polygon(Rect2(-1.5, -3, 10, 3.4))).is_empty(), "the crown cap triangulates")
+	expect(not Geometry2D.triangulate_polygon(VesselArt.rounded(GameState.BEER.glass_outer, GameState.BEER.glass_corner_radius)).is_empty(), "the rounded beer glass (ringed foot) triangulates")
 
 	var s := VesselArt.inner_streak(water.glass_interior, -68.0, -12.0, 2.3)
 	expect(s.size() > 30, "the streak has a point per 1.5 px (%d)" % s.size())

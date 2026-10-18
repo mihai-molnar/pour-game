@@ -10,6 +10,10 @@ extends Resource
 ## IN_PLACE: the pourer fills up where it stands (a pitcher). NEW_BOTTLE: the
 ## empty one is replaced by a new, corked one that gets uncorked.
 enum RefillStyle { IN_PLACE, NEW_BOTTLE }
+## How a bottle looks: its label, what is round its neck and how it is closed.
+## WINE: a grape label, a foil capsule, a cork. BEER: a red-banded label with
+## an ear of barley, a neck label, a crown cap.
+enum BottleLook { WINE, BEER }
 
 @export var id: StringName
 @export var display_name := ""
@@ -75,6 +79,11 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_range(0.0, 90.0) var pourer_rest_deg := 0.0
 ## How it comes back full once it runs dry.
 @export var refill_style := RefillStyle.IN_PLACE
+## The bottle's label, neck and closure (bottles only).
+@export var bottle_look := BottleLook.WINE
+## Every new glass comes with a new, full pourer, whatever was left in the
+## last one (beer: a bottle per glass).
+@export var bottle_per_glass := false
 
 @export_group("Tilt")
 ## Tilt speed (°/s) while DOWN is held and the liquid hasn't reached the lip yet.

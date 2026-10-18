@@ -2,7 +2,7 @@ class_name Effects
 extends Node2D
 ## Short-lived soft effects that outlive what caused them: the puff a
 ## vanishing glass or pourer leaves, dust where an arrival lands on the
-## counter, a popped cork and its spray, the splash of ice landing. Visual only — it uses randf and never
+## counter, a popped cork or crown cap and its spray, the splash of ice landing. Visual only — it uses randf and never
 ## feeds back into gameplay. Main steps it from tick() so it keeps pace with
 ## the simulation.
 
@@ -13,8 +13,9 @@ const MAX_BITS := 120
 const FADE := 0.15
 
 
-## PUFF: a soft cloud blob; DOT: a small round drop or speck; CORK: the flying cork.
-enum Kind { PUFF, DOT, CORK }
+## PUFF: a soft cloud blob; DOT: a small round drop or speck; CORK: the flying
+## cork; CAP: a beer bottle's crown cap.
+enum Kind { PUFF, DOT, CORK, CAP }
 
 
 class Bit:
@@ -60,6 +61,17 @@ func cork(at: Vector2, velocity: Vector2, spray: Color) -> void:
 	_add(at, velocity, 2.0, CORK_W, Palette.WHITE, GRAVITY, Kind.CORK)
 	for i in 4:
 		_add(at, velocity.rotated(randf_range(-0.6, 0.6)) * randf_range(0.3, 0.6), 0.4, 0.5, spray, GRAVITY, Kind.DOT)
+
+
+## The width (px) of a popped crown cap — Pourer.cap_rect()'s on the beer bottle.
+const CAP_W := 13.0
+
+
+## A crown cap flipping off along `velocity`, plus a little foamy spray.
+func cap(at: Vector2, velocity: Vector2, _spray: Color) -> void:
+	_add(at, velocity, 2.0, CAP_W, Palette.WHITE, GRAVITY, Kind.CAP)
+	for i in 5:
+		_add(at, velocity.rotated(randf_range(-0.7, 0.7)) * randf_range(0.25, 0.55), 0.45, 0.55, Palette.FOAM, GRAVITY, Kind.DOT)
 
 
 ## Drops every bit (a new round starts clean).
@@ -110,4 +122,8 @@ func _draw() -> void:
 			Kind.CORK:  # the whole cork, tumbling as it flies
 				draw_set_transform(b.pos, b.life * 9.0)
 				VesselArt.draw_cork(self, Rect2(-b.size * 0.5, -b.size * 0.9, b.size, b.size * 1.8), c.a)
+				draw_set_transform(Vector2.ZERO)
+			Kind.CAP:  # the cap, flipping as it flies
+				draw_set_transform(b.pos, b.life * 11.0)
+				VesselArt.draw_crown_cap(self, Rect2(-b.size * 0.5, -1.7, b.size, 3.4), c.a)
 				draw_set_transform(Vector2.ZERO)

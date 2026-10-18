@@ -232,6 +232,10 @@ func _check_beer_return(pourer: Pourer) -> void:
 	pourer.reset()
 	var refill := _drain_and_refill(pourer, false)
 	expect(refill.upright_at > 0.0 and refill.upright_at < 1.5, "beer: an empty bottle swings back quickly to be replaced (%.2f s)" % refill.upright_at)
+	var m := pourer._mouth()  # x = left edge, y = width
+	var cap := pourer.cap_rect()
+	expect(cap.size.x >= m.y + 2.0 and cap.size.y <= 4.5, "the crown cap is a little wider than the mouth and short (%s)" % cap)
+	expect(absf(cap.get_center().x - (m.x + m.y * 0.5)) < 0.01, "...centred on the mouth")
 
 
 ## refill_progress(): 0 while swinging back upright, never falling, under 1
