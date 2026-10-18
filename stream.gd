@@ -3,8 +3,8 @@ extends Node2D
 ## Liquid in flight between the spout and wherever it lands. Each physics tick
 ## of pouring emits one parcel carrying that tick's volume; parcels fly
 ## ballistically, so liquid already poured keeps arriving after the pitcher
-## stops. Consecutive parcels are drawn joined as a continuous stream; at low
-## flow the stream breaks into separate drops.
+## stops. Consecutive parcels are drawn joined as one smooth ribbon that thins
+## as it falls and speeds up; at low flow the stream breaks into separate drops.
 
 @export var gravity := 1400.0
 ## Below this flow (px²/s) the stream breaks into drops.
@@ -18,7 +18,8 @@ class Parcel:
 	var vel: Vector2
 	var vol: float
 	var tick: int
-	var width: int
+	var width: float  # drawn width at the spout (px); 0 for a lone drop
+	var speed0: float  # speed when it left the spout
 	var state := 0  # 0 = above the rim, 1 = inside the glass, 2 = missed it
 
 var spilled := 0.0
@@ -51,7 +52,9 @@ func emit(origin: Vector2, velocity: Vector2, vol: float, dt: float) -> void:
 			return
 		vol = _pending
 		_pending = 0.0
-	_spawn(origin, velocity, vol, clampi(int(1.0 + sqrt(flow) / 14.0), 1, 4))
+		_spawn(origin, velocity, vol, 0.0)
+		return
+	_spawn(origin, velocity, vol, clampf(1.0 + sqrt(flow) / 14.0, 1.0, 4.0) * 1.2)
 
 
 func set_drink(d: DrinkDef) -> void:
@@ -59,13 +62,14 @@ func set_drink(d: DrinkDef) -> void:
 	liquid_highlight = d.liquid_highlight
 
 
-func _spawn(origin: Vector2, velocity: Vector2, vol: float, width: int) -> void:
+func _spawn(origin: Vector2, velocity: Vector2, vol: float, width: float) -> void:
 	var p := Parcel.new()
 	p.pos = origin
 	p.vel = velocity
 	p.vol = vol
 	p.tick = _tick
 	p.width = width
+	p.speed0 = maxf(velocity.length(), 1.0)
 	_parcels.append(p)
 
 
@@ -93,7 +97,7 @@ func clear() -> void:
 func step(dt: float, glass: Glass) -> void:
 	# The pour stopped with a partial drop still hanging on the lip: let it go.
 	if not _emitted and _pending > 0.0:
-		_spawn(_last_origin, _last_vel, _pending, 1)
+		_spawn(_last_origin, _last_vel, _pending, 0.0)
 		_pending = 0.0
 	if not _emitted:
 		_streaming = false
@@ -149,30 +153,73 @@ func _splash(at: Vector2, p: Parcel) -> void:
 		_droplet_floor.append(at.y)
 
 
+## The closed outline of a stream through `points` with the given widths:
+## the left edge forward, then the right edge back, each offset along the
+## point's normal (from its neighbours' direction).
+static func ribbon(points: PackedVector2Array, widths: PackedFloat32Array) -> PackedVector2Array:
+	var n := points.size()
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
+	for i in n:
+		var dir := (points[mini(i + 1, n - 1)] - points[maxi(i - 1, 0)]).normalized()
+		var normal := Vector2(-dir.y, dir.x) * widths[i] * 0.5
+		left.append(points[i] + normal)
+		right.append(points[i] - normal)
+	right.reverse()
+	return left + right
+
+
 func _draw() -> void:
-	var body := Color(liquid_color, 0.9)
-	var core := Color(liquid_highlight, 0.9)
-	var prev: Parcel = null
+	var body := Color(liquid_color.lerp(liquid_highlight, 0.35), 0.85)
+	var core := Color(liquid_highlight.lerp(Palette.WHITE, 0.25), 0.7)
+	# Runs of parcels emitted on consecutive ticks are one continuous stream.
+	var run: Array[Parcel] = []
 	for p in _parcels:
-		if prev != null and p.tick == prev.tick + 1:
-			_segment(prev.pos, p.pos, p.width, body, core)
-		elif p.width == 1 and (prev == null or p.tick != prev.tick + 1):
-			draw_rect(Rect2(p.pos.floor(), Vector2(1, 2)), core)
-		prev = p
-	if not _parcels.is_empty():
-		var oldest := _parcels[0]
-		if oldest.tick == _landing_parcel_tick + 1 and _tick - _landing_tick <= 2:
-			_segment(oldest.pos, _landing, oldest.width, body, core)
-		var newest := _parcels[-1]
-		if _streaming and newest.tick == _tick - 1:
-			_segment(_last_origin, newest.pos, newest.width, body, core)
+		if not run.is_empty() and p.tick != run[-1].tick + 1:
+			_draw_run(run, body, core)
+			run = []
+		run.append(p)
+	if not run.is_empty():
+		_draw_run(run, body, core)
 	for d in _droplets:
-		draw_rect(Rect2(floorf(d.x), floorf(d.y), 1, 1), core)
+		draw_circle(Vector2(d.x, d.y), 0.5, core)
 
 
-func _segment(a: Vector2, b: Vector2, width: int, body: Color, core: Color) -> void:
-	if width <= 1:
-		draw_line(a, b, core)
-	else:
-		draw_line(a, b, body, float(width))
-		draw_line(a, b, core)
+## One continuous run (oldest first): from where it lands, if it is landing
+## now, up to the spout, if it is still pouring.
+func _draw_run(run: Array[Parcel], body: Color, core: Color) -> void:
+	if run.size() == 1 and run[0].width <= 0.0:
+		draw_circle(run[0].pos, 0.65, core)
+		return
+	var pts := PackedVector2Array()
+	var widths := PackedFloat32Array()
+	var oldest := run[0]
+	if oldest.tick == _landing_parcel_tick + 1 and _tick - _landing_tick <= 2:
+		pts.append(_landing)
+		widths.append(_drawn_width(oldest))
+	for p in run:
+		pts.append(p.pos)
+		widths.append(_drawn_width(p))
+	var newest := run[-1]
+	if _streaming and newest.tick == _tick - 1:
+		pts.append(_last_origin)
+		widths.append(maxf(newest.width, 0.6))
+	if pts.size() < 2:
+		draw_circle(pts[0], maxf(widths[0] * 0.45, 0.55), core)
+		return
+	var outline := ribbon(pts, widths)
+	if not Geometry2D.triangulate_polygon(outline).is_empty():
+		draw_colored_polygon(outline, body)
+	else:  # a sharp kink folded the outline: draw it piece by piece
+		for i in pts.size() - 1:
+			var piece := ribbon(pts.slice(i, i + 2), widths.slice(i, i + 2))
+			draw_colored_polygon(piece, body)
+	var mean := 0.0
+	for w in widths:
+		mean += w
+	draw_polyline(pts, core, maxf(mean / widths.size() * 0.25, 0.25), true)
+
+
+## A parcel's width as it falls: the same flow moving faster is thinner.
+func _drawn_width(p: Parcel) -> float:
+	return maxf(maxf(p.width, 0.6) * sqrt(p.speed0 / maxf(p.vel.length(), p.speed0)), 0.5)

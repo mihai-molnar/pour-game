@@ -65,12 +65,18 @@ var _arrive_t := -1.0  # < 0 when not arriving (covers the slide, the wobble and
 var _uncork_time := 0.0
 var _wiggle := false
 var _pivot := Vector2.ZERO
+var _drawn_outer := PackedVector2Array()
+var _drawn_interior := PackedVector2Array()
+var _walls: Array[PackedVector2Array] = []
+var _wall_tex: GradientTexture1D
 
+@onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
 @onready var _front: DrawLayer = $Front
 
 
 func _ready() -> void:
+	_back.draw_func = _draw_back
 	_liquid.draw_func = _draw_liquid
 	_front.draw_func = _draw_front
 
@@ -80,13 +86,21 @@ func setup(d: DrinkDef) -> void:
 	interior = d.pourer_interior
 	capacity = poly_area(interior)
 	full_volume = capacity * d.pourer_full_fraction
+	_drawn_outer = VesselArt.rounded(d.pourer_outer, d.pourer_corner_radius)
+	_drawn_interior = VesselArt.rounded(interior, d.pourer_corner_radius, true)
+	_walls = VesselArt.walls(_drawn_outer, _drawn_interior)
+	var g := d.pourer_glass_color
+	var wall_a := clampf(g.a * 3.0, 0.3, 0.85)
+	_wall_tex = VesselArt.gradient([[0.0, Color(g.lightened(0.55), wall_a)], [0.2, Color(g.lightened(0.15), wall_a * 0.75)],
+		[0.65, Color(g, wall_a * 0.7)], [1.0, Color(g.lightened(0.55), wall_a * 0.9)]])
 	var box := _bounds(interior)
 	var mat := _liquid.material as ShaderMaterial
 	mat.set_shader_parameter("tint", d.liquid_color)
+	mat.set_shader_parameter("absorb", d.liquid_absorb)
+	mat.set_shader_parameter("scatter", d.liquid_scatter)
 	mat.set_shader_parameter("center_x", box.get_center().x)
 	mat.set_shader_parameter("half_width", box.size.x * 0.5)
 	mat.set_shader_parameter("surface_y", 0.0)
-	mat.set_shader_parameter("highlight_x", box.position.x + 4.0)
 	reset()
 
 
@@ -249,7 +263,7 @@ func _step_arrival(dt: float) -> void:
 ## Turns the drawing (not the node: tilt, the spout and the stream don't see
 ## it) by `angle` about the arrival pivot.
 func _apply_lean(angle: float) -> void:
-	for layer: Node2D in [_liquid, _front]:
+	for layer: Node2D in [_back, _liquid, _front]:
 		layer.rotation = angle
 		layer.position = _pivot - _pivot.rotated(angle)
 
@@ -305,6 +319,7 @@ func _update_surface() -> void:
 		else:
 			hi = mid
 	_surf_point = n * lo
+	_back.queue_redraw()
 	_liquid.queue_redraw()
 	_front.queue_redraw()
 
@@ -342,29 +357,6 @@ static func _bounds(p: PackedVector2Array) -> Rect2:
 	return r
 
 
-## The highlight stripe: the interior's left-most long, mostly vertical edge,
-## moved 4 px inward and shortened 8 px at both ends.
-func _highlight_segment() -> PackedVector2Array:
-	var best := -1
-	var best_x := INF
-	for i in interior.size():
-		var a := interior[i]
-		var b := interior[(i + 1) % interior.size()]
-		var d := b - a
-		if absf(d.y) > absf(d.x) * 2.0 and absf(d.y) > 20.0 and (a.x + b.x) * 0.5 < best_x:
-			best = i
-			best_x = (a.x + b.x) * 0.5
-	if best < 0:
-		return PackedVector2Array()
-	var a := interior[best]
-	var b := interior[(best + 1) % interior.size()]
-	var dir := (b - a).normalized()
-	var n := Vector2(-dir.y, dir.x)
-	if n.dot(_bounds(interior).get_center() - a) < 0.0:
-		n = -n
-	return PackedVector2Array([a + n * 4.0 + dir * 8.0, b + n * 4.0 - dir * 8.0])
-
-
 ## The liquid as drawn: the interior below the current surface, minus
 ## sub-pixel slivers. Clipping can leave a near-zero-area sliver where the
 ## surface passes a hair from a corner (or when almost nothing sits below the
@@ -377,42 +369,124 @@ func liquid_polygons() -> Array[PackedVector2Array]:
 	return polys
 
 
+## liquid_polygons() cut to the rounded inside the pourer is drawn with, minus slivers.
+func drawn_liquid_polygons() -> Array[PackedVector2Array]:
+	var polys: Array[PackedVector2Array] = []
+	for liquid in liquid_polygons():
+		for poly in Geometry2D.intersect_polygons(liquid, _drawn_interior):
+			if poly_area(poly) >= 0.5:
+				polys.append(poly)
+	return polys
+
+
+## Behind the liquid: the glass body's tint and a soft dark outline (the handle's too).
+func _draw_back(ci: CanvasItem) -> void:
+	if def == null:
+		return
+	var closed := _drawn_outer.duplicate()
+	closed.append(_drawn_outer[0])
+	ci.draw_colored_polygon(_drawn_outer, def.pourer_glass_color)
+	ci.draw_polyline(closed, Color(Palette.INK, 0.35), 0.7, true)
+	if def.pourer_handle.size() >= 2:
+		ci.draw_polyline(def.pourer_handle, Color(Palette.INK, 0.3), 4.0, true)
+
+
+## Draws this pourer into another canvas item (already transformed) for its
+## reflection in the counter: body, the liquid as flat colour, walls.
+func draw_reflection(ci: CanvasItem) -> void:
+	_draw_back(ci)
+	if volume >= 1.0:
+		for poly in drawn_liquid_polygons():
+			ci.draw_colored_polygon(poly, def.liquid_color)
+	var box := _bounds(_drawn_outer)
+	for wall in _walls:
+		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, _wall_tex)
+
+
 func _draw_liquid(ci: CanvasItem) -> void:
 	if def == null or volume < 1.0:
 		return
-	for poly in liquid_polygons():
-		ci.draw_colored_polygon(poly, Color.WHITE)
+	for poly in drawn_liquid_polygons():
+		ci.draw_colored_polygon(poly, Color.WHITE)  # the liquid shader colours it
 
 
 func _draw_front(ci: CanvasItem) -> void:
 	if def == null:
 		return
-	var outer := def.pourer_outer
 	var g := def.pourer_glass_color
-	ci.draw_colored_polygon(outer, g)
-	for wall in DrawLayer.wall_polygons(outer, interior):
-		ci.draw_colored_polygon(wall, Color(g, minf(g.a * 3.0, 1.0)))
-	# Liquid surface sparkle.
+	var box := _bounds(_drawn_outer)
+	# Tinted glass shades the liquid behind its front wall.
+	ci.draw_colored_polygon(_drawn_interior, Color(g.darkened(0.3), minf(g.a * 0.55, 0.35)))
+	for wall in _walls:
+		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, _wall_tex)
 	if volume >= 1.0:
 		var u := Vector2.from_angle(_surf_angle)
 		var line := PackedVector2Array([_surf_point - u * 200.0, _surf_point + u * 200.0])
-		for seg in Geometry2D.intersect_polyline_with_polygon(line, interior):
-			ci.draw_polyline(seg, Color(Palette.WHITE, 0.55))
-	DrawLayer.draw_outline(ci, outer, Color(g, 1.0), Color(g, 0.45))
-	DrawLayer.draw_outline(ci, interior, Color(Palette.MIST, 0.6), Color(0, 0, 0, 0))
+		for seg in Geometry2D.intersect_polyline_with_polygon(line, _drawn_interior):
+			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
+			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.85), 0.45, true)
+	if def.pourer_label.has_area():
+		_draw_label(ci, def.pourer_label)
+	if def.pourer_foil.has_area():
+		_draw_foil(ci, def.pourer_foil)
+	var inner := _bounds(_drawn_interior)
+	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 3.0, inner.end.y - 6.0, 2.3), Color(Palette.WHITE, 0.45), 1.8)
+	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 20.0, lerpf(inner.position.y, inner.end.y, 0.6), 4.8), Color(Palette.WHITE, 0.25), 0.6)
+	VesselArt.draw_rim_light(ci, _drawn_outer, Color(Palette.WHITE, 0.6), 0.45)
+	var m := _mouth()
+	if def.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
+		var ring := VesselArt.rounded(_rect_poly(Rect2(m.x - 2.8, box.position.y - 0.8, m.y + 5.6, 3.4)), 1.2)
+		ci.draw_colored_polygon(ring, Color(g.lightened(0.45), 0.8))
+	else:
+		var rim := VesselArt.span_at(_drawn_outer, box.position.y + 0.3)
+		ci.draw_line(Vector2(rim.x + 0.4, box.position.y + 0.35), Vector2(rim.y - 0.4, box.position.y + 0.35), Color(Palette.WHITE, 0.6), 0.5, true)
 	if def.pourer_handle.size() >= 2:
-		ci.draw_polyline(def.pourer_handle, Color(Palette.FROST, 0.9), 3.0)
-		ci.draw_polyline(def.pourer_handle, Color(Palette.MIST, 0.8))
-	var hl := _highlight_segment()
-	if hl.size() == 2:
-		ci.draw_line(hl[0], hl[1], Color(Palette.WHITE, 0.5))
-	# Glint on the outer vertex nearest the spout lip.
-	var lip := outer[0]
-	for p in outer:
-		if p.length() < lip.length():
-			lip = p
-	ci.draw_rect(Rect2(lip.floor(), Vector2.ONE), Palette.WHITE)
+		ci.draw_polyline(def.pourer_handle, Color(Palette.FROST, 0.32), 3.0, true)
+		var shine := def.pourer_handle.duplicate()
+		for i in shine.size():
+			shine[i] += Vector2(-0.6, -0.4)
+		ci.draw_polyline(shine, Color(Palette.WHITE, 0.55), 0.6, true)
 	if corked:
-		var m := _mouth()
-		ci.draw_rect(Rect2(m.x + 1.0, -3.0, m.y - 2.0, 5.0), Palette.BROWN)
-		ci.draw_rect(Rect2(m.x + 1.0, -3.0, m.y - 2.0, 1.0), Palette.TAN)
+		var cork := VesselArt.rounded(_rect_poly(Rect2(m.x + 0.6, -3.4, m.y - 1.2, 5.4)), 0.8)
+		ci.draw_colored_polygon(cork, Palette.BROWN)
+		ci.draw_line(Vector2(m.x + 1.0, -3.0), Vector2(m.x + m.y - 1.0, -3.0), Palette.TAN, 0.8, true)
+
+
+## A paper label round the body: cream, shaded toward the edges, thin rules and a small grape emblem.
+func _draw_label(ci: CanvasItem, r: Rect2) -> void:
+	VesselArt.draw_hgradient(ci, _rect_poly(r), r.position.x, r.end.x, _label_tex())
+	var ink := Color(Palette.WINE, 0.85)
+	ci.draw_rect(Rect2(r.position.x, r.position.y + 3.0, r.size.x, 0.6), ink)
+	ci.draw_rect(Rect2(r.position.x, r.end.y - 3.6, r.size.x, 0.6), ink)
+	var c := r.position + Vector2(r.size.x * 0.5, r.size.y * 0.38)
+	ci.draw_arc(c, 6.0, 0.0, TAU, 32, ink, 0.6, true)
+	for d in [Vector2(-1.6, -1.4), Vector2(1.6, -1.4), Vector2(0, 1.4), Vector2(-1.6, 4.0), Vector2(1.6, 4.0), Vector2(0, -4.0)]:
+		ci.draw_circle(c + d * Vector2(1, 0.75) + Vector2(0, -1.0), 1.0, ink)
+	ci.draw_rect(Rect2(c.x - 12.0, r.end.y - 14.0, 24.0, 1.4), ink)
+	ci.draw_rect(Rect2(c.x - 8.0, r.end.y - 9.5, 16.0, 0.9), Color(ink, 0.5))
+
+
+## A foil capsule round the neck: dark red, a band of light down it.
+func _draw_foil(ci: CanvasItem, r: Rect2) -> void:
+	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 0.8), r.position.x, r.end.x, _foil_tex())
+	ci.draw_line(Vector2(r.position.x + 0.4, r.position.y + 0.3), Vector2(r.end.x - 0.4, r.position.y + 0.3), Color(Palette.SAND, 0.5), 0.5, true)
+
+
+static var _label: GradientTexture1D
+static var _foil: GradientTexture1D
+
+
+static func _label_tex() -> GradientTexture1D:
+	if _label == null:
+		_label = VesselArt.gradient([[0.0, Palette.TAN], [0.28, Palette.LABEL], [0.7, Palette.LABEL.darkened(0.06)], [1.0, Palette.TAN.darkened(0.1)]])
+	return _label
+
+
+static func _foil_tex() -> GradientTexture1D:
+	if _foil == null:
+		_foil = VesselArt.gradient([[0.0, Palette.WINE.darkened(0.65)], [0.35, Palette.WINE.darkened(0.1)], [0.65, Palette.WINE.darkened(0.45)], [1.0, Palette.WINE.darkened(0.75)]])
+	return _foil
+
+
+static func _rect_poly(r: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])

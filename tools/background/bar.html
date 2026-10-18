@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bar Background</title>
+<style>
+  html, body { margin: 0; background: #0e0c12; }
+  canvas { display: block; width: 100%; height: auto; }
+  #out { display: none; }
+</style>
+</head>
+<body>
+<!--
+  The game's background: an evening bar behind the counter. Drawn in world
+  units (the game's 640x360 "pixels") and rendered at PPU image pixels per world
+  pixel. Open it in a browser to preview; tools/make_background.sh renders it to
+  art/background.png (it loads the page with ?export and reads the PNG back).
+
+  Keep in sync with main.gd: BACKGROUND_RECT = Rect2(110, 76, 380, 220), the
+  counter top at y = 280 (where the vessels stand), the camera view about
+  x 117-483, y 83-289.
+-->
+<canvas id="c"></canvas>
+<pre id="out"></pre>
+<script>
+const X0 = 110, Y0 = 76, WW = 380, WH = 220, PPU = 7;
+const COUNTER_Y = 280;
+// The counter's top surface runs from its back edge to its front lip; the vessels stand at COUNTER_Y.
+const COUNTER_BACK = 273.5, COUNTER_FRONT = 283.5, LIP_BOTTOM = 286.5;
+const W = WW * PPU, H = WH * PPU;
+
+// Colours (warm bar tones chosen to sit with palette.gd; the game code never reads these).
+const C = {
+  wall: '#1a1219', wallWarm: '#2b1a21', panel: '#24161d', trim: '#4a2c2c',
+  wood: '#3e2731', woodLight: '#733e39', mirror: '#141018',
+  counterBack: '#2a151a', counterFront: '#5a2f2d', counterEdge: '#d39a74', counterFace: '#24131a',
+  lamp: '255,190,122', neon: '246,117,122', neonCore: '255,226,226', olive: '160,220,110',
+  label: '#e8d9b8', labelDark: '#2a1c24',
+};
+
+function rng(seed) { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
+function layer() { const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d'); c.setTransform(PPU, 0, 0, PPU, -X0 * PPU, -Y0 * PPU); return [cv, c]; }
+function glow(c, x, y, r, rgb, a, sy = 1) {
+  c.save(); c.translate(x, y); c.scale(1, sy);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, r);
+  g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(0.45, `rgba(${rgb},${a * 0.45})`); g.addColorStop(1, `rgba(${rgb},0)`);
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill(); c.restore();
+}
+function vgrad(c, y0, y1, stops) { const g = c.createLinearGradient(0, y0, 0, y1); for (const [o, col] of stops) g.addColorStop(o, col); return g; }
+function hgrad(c, x0, x1, stops) { const g = c.createLinearGradient(x0, 0, x1, 0); for (const [o, col] of stops) g.addColorStop(o, col); return g; }
+
+// ---------- far: wall, mirror, lamps, neon ----------
+function drawFar(c) {
+  const R = rng(3);
+  c.fillStyle = vgrad(c, Y0, COUNTER_BACK, [[0, '#140e16'], [0.5, C.wall], [1, C.wallWarm]]);
+  c.fillRect(X0, Y0, WW, WH);
+  // upper wall: dark vertical boards
+  for (let x = X0; x < X0 + WW; x += 9) {
+    c.fillStyle = `rgba(255,220,200,${0.015 + R() * 0.02})`; c.fillRect(x, Y0, 0.5, 30);
+    c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(x + 0.5, Y0, 0.4, 30);
+  }
+  // crown trim above the back bar
+  c.fillStyle = C.trim; c.fillRect(X0, 104, WW, 3);
+  c.fillStyle = 'rgba(255,200,150,0.18)'; c.fillRect(X0, 104, WW, 0.5);
+  c.fillStyle = 'rgba(0,0,0,0.4)'; c.fillRect(X0, 107, WW, 1.5);
+  // mirror panel behind the shelves, in a wood frame with pillars at the sides
+  c.fillStyle = vgrad(c, 108, 240, [[0, '#120d16'], [0.6, '#1b1219'], [1, '#22151b']]);
+  c.fillRect(124, 108, 352, 132);
+  c.save(); c.beginPath(); c.rect(124, 108, 352, 132); c.clip();
+  for (const [x, w, a] of [[150, 22, 0.035], [205, 8, 0.03], [330, 30, 0.03], [405, 10, 0.035]]) {
+    c.fillStyle = `rgba(255,235,220,${a})`; c.beginPath(); c.moveTo(x, 108); c.lineTo(x + w, 108); c.lineTo(x + w - 40, 240); c.lineTo(x - 40, 240); c.closePath(); c.fill();
+  }
+  c.restore();
+  for (const x of [114, 476]) {
+    c.fillStyle = hgrad(c, x, x + 10, [[0, '#2a1a20'], [0.4, '#3a2429'], [1, '#1c1116']]);
+    c.fillRect(x, 104, 10, 140);
+  }
+  // warm light from above: an off-screen lamp over the play area and two pendants
+  glow(c, 290, 70, 150, C.lamp, 0.16, 0.9);
+  for (const x of [160, 452]) {
+    c.strokeStyle = 'rgba(20,14,20,0.9)'; c.lineWidth = 0.5; c.beginPath(); c.moveTo(x, Y0); c.lineTo(x, 89); c.stroke();
+    glow(c, x, 97, 70, C.lamp, 0.22);
+    c.fillStyle = vgrad(c, 89, 97, [[0, '#2d1d1a'], [1, '#5a3a2a']]);
+    c.beginPath(); c.moveTo(x - 2, 89); c.lineTo(x + 2, 89); c.lineTo(x + 7, 97); c.lineTo(x - 7, 97); c.closePath(); c.fill();
+    glow(c, x, 97.5, 6, '255,236,200', 0.95);
+    glow(c, x, 112, 34, C.lamp, 0.12, 1.6);
+  }
+  // neon cocktail sign on the mirror, upper right
+  const nx = 446, ny = 128;
+  const path = () => {
+    c.beginPath(); c.moveTo(nx - 11, ny - 9); c.lineTo(nx + 11, ny - 9); c.lineTo(nx, ny + 3); c.closePath();
+    c.moveTo(nx, ny + 3); c.lineTo(nx, ny + 13); c.moveTo(nx - 6, ny + 13); c.lineTo(nx + 6, ny + 13);
+    c.moveTo(nx + 7, ny - 15); c.lineTo(nx + 2, ny - 5);
+  };
+  glow(c, nx, ny, 32, C.neon, 0.16);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  c.strokeStyle = `rgba(${C.neon},0.35)`; c.lineWidth = 3; path(); c.stroke();
+  c.strokeStyle = `rgba(${C.neon},1)`; c.lineWidth = 1.1; path(); c.stroke();
+  c.strokeStyle = `rgba(${C.neonCore},0.95)`; c.lineWidth = 0.4; path(); c.stroke();
+  glow(c, nx - 3, ny - 5, 2.6, C.olive, 0.95);
+  // a few out-of-focus lights
+  for (let i = 0; i < 10; i++) {
+    const x = X0 + R() * WW, y = 112 + R() * 40, r = 2 + R() * 3.5;
+    glow(c, x, y, r, R() < 0.7 ? '255,200,140' : '240,140,170', 0.12 + R() * 0.1);
+  }
+}
+
+// ---------- mid: shelves of backlit bottles, the back-bar cabinet ----------
+const BOTTLES = [
+  // [glass colour top, glass colour bottom (backlit), label?]
+  ['#183a2a', '#3a7a46', true], ['#4a2618', '#c8885a', true], ['#3e4658', '#9aa6ba', false],
+  ['#300b12', '#8a2430', true], ['#1a1e32', '#4a5878', true], ['#5a3a10', '#d0922e', false],
+  ['#1c3624', '#4e9a44', false], ['#3a2418', '#a0623e', true], ['#2a2a30', '#6a6a78', true],
+];
+// Bottle shapes: [neck width share, neck height share, shoulder share, width range, height range]
+const SHAPES = [
+  [0.3, 0.38, 0.5, [6.5, 9], [22, 31]],   // wine-style: long neck, round shoulders
+  [0.42, 0.22, 0.18, [7, 11], [17, 26]],  // liquor: short neck, square shoulders
+  [0.38, 0.2, 0.35, [9, 12.5], [12, 17]], // squat decanter
+  [0.36, 0.3, 0.3, [5.5, 7], [25, 33]],   // tall and slim
+];
+function bottle(c, R, x, base, w, h, shape) {
+  const [top, bottom, labelled] = BOTTLES[Math.floor(R() * BOTTLES.length)];
+  const neckW = w * shape[0], neckH = h * shape[1], bodyH = h - neckH;
+  const shoulder = w * shape[2];
+  c.fillStyle = vgrad(c, base - h, base, [[0, top], [0.55, top], [1, bottom]]);
+  c.beginPath();
+  c.moveTo(x, base); c.lineTo(x, base - bodyH + shoulder);
+  c.quadraticCurveTo(x, base - bodyH, x + (w - neckW) / 2, base - bodyH - shoulder * 0.2);
+  c.lineTo(x + (w - neckW) / 2, base - h); c.lineTo(x + (w + neckW) / 2, base - h);
+  c.lineTo(x + (w + neckW) / 2, base - bodyH - shoulder * 0.2);
+  c.quadraticCurveTo(x + w, base - bodyH, x + w, base - bodyH + shoulder);
+  c.lineTo(x + w, base); c.closePath(); c.fill();
+  // cap
+  c.fillStyle = R() < 0.5 ? '#2a1c24' : '#8a6a3a';
+  c.fillRect(x + (w - neckW) / 2 - 0.2, base - h - 0.6, neckW + 0.4, 2.2);
+  if (labelled) {
+    const ly = base - bodyH * (0.35 + R() * 0.15), lh = bodyH * 0.32;
+    c.fillStyle = R() < 0.7 ? C.label : C.labelDark; c.globalAlpha = 0.6;
+    c.fillRect(x + 0.5, ly, w - 1, lh);
+    c.globalAlpha = 0.5; c.fillStyle = '#3e2731'; c.fillRect(x + w * 0.25, ly + lh * 0.4, w * 0.5, 0.5);
+    c.globalAlpha = 1;
+  }
+  // glint
+  c.fillStyle = 'rgba(255,245,230,0.35)'; c.fillRect(x + w * 0.16, base - bodyH + shoulder * 0.6, w * 0.1, bodyH - shoulder - 1);
+  c.fillStyle = 'rgba(255,245,230,0.25)'; c.fillRect(x + (w - neckW) / 2 + 0.3, base - h + 1.5, 0.4, neckH - 2);
+}
+// A stack of upturned tumblers (rocks glasses) on a shelf.
+function upturned(c, x, y) {
+  for (const [dx, dy] of [[0, 0], [8.5, 0], [17, 0], [4.2, -7.2], [12.7, -7.2]]) {
+    const gx = x + dx, gy = y + dy;
+    c.fillStyle = 'rgba(200,220,235,0.08)';
+    c.beginPath(); c.moveTo(gx, gy); c.lineTo(gx + 8, gy); c.lineTo(gx + 7.2, gy - 7); c.lineTo(gx + 0.8, gy - 7); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(230,240,250,0.35)'; c.lineWidth = 0.35; c.stroke();
+    c.fillStyle = 'rgba(230,240,250,0.4)'; c.fillRect(gx + 0.8, gy - 7, 6.4, 1.1);
+    c.fillStyle = 'rgba(255,255,255,0.3)'; c.fillRect(gx + 1.6, gy - 5.5, 0.4, 4.5);
+  }
+}
+function shelf(c, R, y, gap, glasses) {
+  // backlight rising behind the bottles
+  c.fillStyle = vgrad(c, y - 34, y, [[0, 'rgba(254,174,52,0)'], [1, 'rgba(254,174,52,0.22)']]);
+  c.fillRect(124, y - 34, 352, 34);
+  // a back row, smaller and in shadow, then the front row in groups
+  for (const back of [true, false]) {
+    let x = 126 + R() * (back ? 6 : 3);
+    while (x < 472) {
+      const shape = SHAPES[Math.floor(R() * SHAPES.length)];
+      const w = shape[3][0] + R() * (shape[3][1] - shape[3][0]), h = (shape[4][0] + R() * (shape[4][1] - shape[4][0])) * (back ? 0.92 : 1);
+      if (gap && x + w > gap[0] && x < gap[1]) { x = gap[1]; continue; }
+      if (x + w > 474) break;
+      if (!back && glasses && x + w > glasses[0] && x < glasses[0] + 26) { upturned(c, glasses[0], y); x = glasses[0] + 27; continue; }
+      c.filter = back ? 'brightness(0.45)' : 'none';
+      if (back || R() > 0.1) bottle(c, R, x, y, w, h, shape);
+      c.filter = 'none';
+      x += w + (back ? 2 + R() * 5 : 0.8 + R() * (R() < 0.2 ? 7 : 2.5));
+    }
+  }
+  // glass shelf: bright front edge, LED glow under it
+  c.fillStyle = 'rgba(255,214,170,0.55)'; c.fillRect(124, y, 352, 0.7);
+  c.fillStyle = 'rgba(40,24,28,0.9)'; c.fillRect(124, y + 0.7, 352, 1.6);
+  c.fillStyle = vgrad(c, y + 2.3, y + 9, [[0, 'rgba(255,190,120,0.18)'], [1, 'rgba(255,190,120,0)']]);
+  c.fillRect(124, y + 2.3, 352, 7);
+}
+function drawMid(c) {
+  const R = rng(11);
+  shelf(c, R, 150, [420, 470], null);
+  shelf(c, R, 204, null, [372]);
+  // the back-bar cabinet under the mirror
+  c.fillStyle = vgrad(c, 240, COUNTER_BACK, [[0, '#2c1a1f'], [1, '#1e1116']]);
+  c.fillRect(X0, 240, WW, COUNTER_BACK - 240);
+  c.fillStyle = 'rgba(255,200,150,0.22)'; c.fillRect(X0, 240, WW, 0.6);
+  c.fillStyle = '#3a2328'; c.fillRect(X0, 240.6, WW, 2.4);
+  for (let x = 128; x < 470; x += 38) {
+    c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 0.6; c.strokeRect(x, 246, 34, 26);
+    c.strokeStyle = 'rgba(255,210,170,0.06)'; c.lineWidth = 0.4; c.strokeRect(x + 0.6, 246.6, 34, 26);
+    c.fillStyle = 'rgba(200,160,90,0.5)'; c.fillRect(x + 30, 257, 0.8, 4);
+  }
+}
+
+// ---------- near: the counter ----------
+function drawNear(c) {
+  // top surface (polished dark wood), receding from its front lip to the back edge
+  c.fillStyle = vgrad(c, COUNTER_BACK, COUNTER_FRONT, [[0, C.counterBack], [0.6, '#46241f'], [1, C.counterFront]]);
+  c.fillRect(X0, COUNTER_BACK, WW, COUNTER_FRONT - COUNTER_BACK);
+  c.save(); c.beginPath(); c.rect(X0, COUNTER_BACK, WW, COUNTER_FRONT - COUNTER_BACK); c.clip();
+  const R = rng(5);
+  c.strokeStyle = 'rgba(0,0,0,0.16)'; c.lineWidth = 0.25;
+  for (let i = 0; i < 9; i++) {
+    const y = COUNTER_BACK + 0.8 + i * 1.1 + R() * 0.4;
+    c.beginPath(); c.moveTo(X0, y); c.bezierCurveTo(X0 + 120, y - 0.5 + R(), X0 + 260, y + 0.6 - R(), X0 + WW, y + R() * 0.3); c.stroke();
+  }
+  // light pools and reflections of the lamps and the back bar
+  glow(c, 296, 280, 120, C.lamp, 0.26, 0.09);
+  for (const x of [160, 452]) glow(c, x, 279, 45, C.lamp, 0.22, 0.12);
+  for (const [x, a] of [[160, 0.12], [452, 0.12], [250, 0.05], [330, 0.05]]) {
+    c.fillStyle = vgrad(c, COUNTER_BACK, COUNTER_FRONT, [[0, `rgba(${C.lamp},${a})`], [1, `rgba(${C.lamp},0)`]]);
+    c.fillRect(x - 3, COUNTER_BACK, 6, COUNTER_FRONT - COUNTER_BACK);
+  }
+  c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(X0, COUNTER_BACK, WW, 0.5);
+  c.restore();
+  // front lip and face
+  c.fillStyle = vgrad(c, COUNTER_FRONT, LIP_BOTTOM, [[0, C.counterEdge], [0.3, '#a8644e'], [1, '#4a2526']]);
+  c.fillRect(X0, COUNTER_FRONT, WW, LIP_BOTTOM - COUNTER_FRONT);
+  c.fillStyle = hgrad(c, X0, X0 + WW, [[0, 'rgba(0,0,0,0.35)'], [0.4, 'rgba(0,0,0,0)'], [0.62, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.35)']]);
+  c.fillRect(X0, COUNTER_FRONT, WW, LIP_BOTTOM - COUNTER_FRONT);
+  c.fillStyle = vgrad(c, LIP_BOTTOM, Y0 + WH, [[0, '#2a161b'], [1, '#140b10']]);
+  c.fillRect(X0, LIP_BOTTOM, WW, Y0 + WH - LIP_BOTTOM);
+}
+
+// ---------- compose ----------
+const cv = document.getElementById('c'); cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const [far, fc] = layer(), [mid, mc] = layer(), [near, nc] = layer();
+drawFar(fc); drawMid(mc); drawNear(nc);
+ctx.fillStyle = C.wall; ctx.fillRect(0, 0, W, H);
+ctx.filter = 'blur(2.5px)'; ctx.drawImage(far, 0, 0);
+ctx.filter = 'blur(1.6px)'; ctx.drawImage(mid, 0, 0);
+ctx.filter = 'none';
+// keep the area behind the glass and the pourer calmer than the edges
+ctx.setTransform(PPU, 0, 0, PPU, -X0 * PPU, -Y0 * PPU);
+glow(ctx, 300, 205, 110, '8,4,10', 0.32, 0.8);
+ctx.setTransform(1, 0, 0, 1, 0, 0);
+ctx.drawImage(near, 0, 0);
+// soft vignette
+const vg = ctx.createRadialGradient(W * 0.5, H * 0.55, H * 0.45, W * 0.5, H * 0.5, W * 0.62);
+vg.addColorStop(0, 'rgba(6,3,8,0)'); vg.addColorStop(1, 'rgba(6,3,8,0.45)');
+ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+if (location.search.includes('export')) document.getElementById('out').textContent = 'PNGSTART' + cv.toDataURL('image/png') + 'PNGEND';
+</script>
+</body>
+</html>

@@ -27,4 +27,6 @@ const BROWN := Color("733e39")
 const CLAY := Color("b86f50")
 const TAN := Color("c28569")
 const SAND := Color("e8b796")
+## A bottle label's paper.
+const LABEL := Color("eadcbc")
 const PEACH := Color("e4a672")

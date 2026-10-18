@@ -16,12 +16,19 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var liquid_color := Color("0099db")
 ## Stream core, sparkles, drips.
 @export var liquid_highlight := Color("2ce8f5")
+## How much of the light behind the liquid it swallows per px of view path
+## (r, g, b): small for water (the bar shows through), large for wine.
+@export var liquid_absorb := Vector3(0.010, 0.004, 0.002)
+## How much liquid_color the liquid gives off by itself (so clear water still reads blue).
+@export_range(0.0, 1.0) var liquid_scatter := 0.35
 
 @export_group("Glass")
 @export var glass_interior := PackedVector2Array()
 @export var glass_outer := PackedVector2Array()
 ## The fill line as a share of the glass interior — fixed per drink type.
 @export_range(0.1, 1.0) var fill_fraction := 0.9
+## Corner rounding (px) for drawing the glass smooth; the physics keeps the sharp shapes.
+@export var glass_corner_radius := 2.0
 
 @export_group("Payout")
 ## Coins per scoring step, before the streak multiplier.
@@ -37,8 +44,14 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 ## Optional handle polyline (empty for bottles).
 @export var pourer_handle := PackedVector2Array()
 ## The pourer's glass: rgb tints it, alpha is the body's tint strength (the
-## walls get 3× that, capped at 1).
+## walls get 3× that, capped at 0.85; tinted glass also shades the liquid).
 @export var pourer_glass_color := Color(Palette.FROST, 0.1)
+## Corner rounding (px) for drawing the pourer smooth; the physics keeps the sharp shapes.
+@export var pourer_corner_radius := 3.0
+## A label on the body, local and upright (zero size = none).
+@export var pourer_label := Rect2()
+## A foil capsule round the neck, local and upright (zero size = none).
+@export var pourer_foil := Rect2()
 ## "Full" as a share of the pourer interior (a brim-full pitcher would pour at the slightest tilt).
 @export_range(0.1, 0.99) var pourer_full_fraction := 0.9
 @export var spout_dir := Vector2(-1.0, -0.25)

@@ -2,18 +2,18 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://t10i8sb6vvs1"
-path="res://.godot/imported/PressStart2P-Regular.ttf-c7d83f2c4bd295d4c960a93a703ae2b2.fontdata"
+uid="uid://b774tt22c7ntm"
+path="res://.godot/imported/Fredoka.ttf-298377900bfb6872c6093eeb33bab54d.fontdata"
 
 [deps]
 
-source_file="res://fonts/PressStart2P-Regular.ttf"
-dest_files=["res://.godot/imported/PressStart2P-Regular.ttf-c7d83f2c4bd295d4c960a93a703ae2b2.fontdata"]
+source_file="res://fonts/Fredoka.ttf"
+dest_files=["res://.godot/imported/Fredoka.ttf-298377900bfb6872c6093eeb33bab54d.fontdata"]
 
 [params]
 
 Rendering=null
-antialiasing=0
+antialiasing=1
 generate_mipmaps=false
 disable_embedded_bitmaps=true
 multichannel_signed_distance_field=false
@@ -22,8 +22,8 @@ msdf_size=48
 allow_system_fallback=true
 force_autohinter=false
 modulate_color_glyphs=false
-hinting=0
-subpixel_positioning=0
+hinting=1
+subpixel_positioning=4
 keep_rounding_remainders=true
 oversampling=0.0
 Fallbacks=null
