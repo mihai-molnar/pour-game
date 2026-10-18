@@ -415,6 +415,21 @@ func _draw_back(ci: CanvasItem) -> void:
 	ci.draw_polyline(closed, Color(Palette.INK, 0.35), 0.7, true)
 
 
+## Draws this glass into another canvas item (already transformed) for its
+## reflection in the counter: body, the liquid as flat colour, walls — no
+## light, no marks.
+func draw_reflection(ci: CanvasItem) -> void:
+	_draw_back(ci)
+	var poly := liquid_polygon()
+	if not poly.is_empty():
+		ci.draw_colored_polygon(poly, def.liquid_color)
+	var box := Rect2(_drawn_outer[0], Vector2.ZERO)
+	for p in _drawn_outer:
+		box = box.expand(p)
+	for wall in _walls:
+		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, VesselArt.clear_glass_walls())
+
+
 func _draw_liquid(ci: CanvasItem) -> void:
 	var poly := liquid_polygon()
 	if not poly.is_empty():

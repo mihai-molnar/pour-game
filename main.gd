@@ -44,6 +44,7 @@ const HINT := "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug"
 @onready var summary: RoundSummary = $RoundSummary
 @onready var camera: Camera2D = $Camera
 @onready var shadows: Shadows = $Shadows
+@onready var reflection: Reflection = $Reflection
 
 ## When true, _physics_process does nothing and a check script drives tick().
 var manual := false
@@ -77,6 +78,8 @@ func _ready() -> void:
 	camera.zoom = Vector2.ONE * CAMERA_ZOOM
 	shadows.glass = glass
 	shadows.pourer = pourer
+	reflection.glass = glass
+	reflection.pourer = pourer
 	summary.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	pourer.landed.connect(_on_landed)

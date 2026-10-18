@@ -391,6 +391,18 @@ func _draw_back(ci: CanvasItem) -> void:
 		ci.draw_polyline(def.pourer_handle, Color(Palette.INK, 0.3), 4.0, true)
 
 
+## Draws this pourer into another canvas item (already transformed) for its
+## reflection in the counter: body, the liquid as flat colour, walls.
+func draw_reflection(ci: CanvasItem) -> void:
+	_draw_back(ci)
+	if volume >= 1.0:
+		for poly in drawn_liquid_polygons():
+			ci.draw_colored_polygon(poly, def.liquid_color)
+	var box := _bounds(_drawn_outer)
+	for wall in _walls:
+		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, _wall_tex)
+
+
 func _draw_liquid(ci: CanvasItem) -> void:
 	if def == null or volume < 1.0:
 		return

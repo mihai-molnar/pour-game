@@ -48,6 +48,14 @@ func run() -> void:
 	expect(bg_rect.position.distance_to(Main.BACKGROUND_RECT.position) < 0.5 and bg_rect.size.distance_to(Main.BACKGROUND_RECT.size) < 0.5,
 		"the background sits on BACKGROUND_RECT (%s)" % bg_rect)
 
+	var reflection: Node2D = main.get_node_or_null("Reflection")
+	expect(reflection != null and reflection.clip_children == CanvasItem.CLIP_CHILDREN_ONLY, "the counter reflection is clipped to the counter")
+	if reflection != null:
+		expect(reflection.get_index() < main.get_node("Glass").get_index(), "...and drawn under the glass")
+		var mirror: Node2D = reflection.get_node("Mirror")
+		expect(mirror.modulate.a > 0.05 and mirror.modulate.a < 0.3, "...faint (alpha %.2f)" % mirror.modulate.a)
+		mirror.queue_redraw()
+
 	near(main.world_to_hud(Main.CAMERA_CENTER).distance_to(Vector2(320, 180)), 0.0, "the camera centre is the screen centre", 0.01)
 	var rim := main.world_to_hud(Vector2(256, 206))
 	expect(Rect2(0, 0, 640, 360).has_point(rim), "the glass rim maps onto the screen (%s)" % rim)
