@@ -83,7 +83,7 @@ func _init(for_item: Resource, title: String, lines: String, picture: Node2D, pi
 	toggle_button.add_theme_font_size_override("font_size", 11)
 	toggle_button.pressed.connect(activated.emit)
 	add_child(toggle_button)
-	note = _label(Vector2(0, 184), "At least one drink", 8, Color(Palette.FROST, 0.8), 500)
+	note = _label(Vector2(0, 184), "At least one drink", 9, Color(Palette.FROST, 0.8), 500)
 
 
 func _label(pos: Vector2, text: String, font_size: int, color: Color, weight: int) -> Label:

@@ -65,6 +65,12 @@ func run() -> void:
 	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [water, wine], "MENU: a card per owned drink")
 	expect(shop.toggle(water) and not GameState.menu.has(water), "water switched off")
 	expect(not shop.toggle(wine) and shop.cards[1].toggle_button.disabled and shop.cards[1].note.visible, "the last drink on can't be switched off")
+	var smallest := 99
+	for card in shop.cards:
+		for child in card.get_children():
+			if child is Label:
+				smallest = mini(smallest, (child as Label).get_theme_font_size("font_size"))
+	expect(smallest >= 9, "no card text under 9 HUD units (smallest %d)" % smallest)
 	shop.close()
 	shop.open()
 	eq(shop.tab, Shop.Tab.MENU, "the shop reopens on the last tab")
