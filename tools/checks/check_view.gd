@@ -1,8 +1,8 @@
 extends CheckBase
 ## Checks the camera framing: arriving vessels start off-screen, every vessel
 ## fits the view at rest and at its common pouring tilts (clear of the HUD row
-## unless tipped far), the counter edge shows, and world points map onto the
-## screen. Run:
+## unless tipped far), the counter edge shows, the background covers the view,
+## and world points map onto the screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=view
 
 ## Vessels stay this far inside the view (world px).
@@ -41,6 +41,12 @@ func run() -> void:
 			var room := inner if tilt > HUD_TILT else below_hud
 			expect(room.encloses(box), "%s pourer at tilt %d fits (%s in %s)" % [d.id, tilt, box, room])
 			tilt += 5.0
+
+	var bg: Sprite2D = main.get_node("Background")
+	var bg_rect := Rect2(bg.position, bg.texture.get_size() * bg.scale)
+	expect(bg_rect.encloses(view.grow(1.0)), "the background covers the whole view (%s vs %s)" % [bg_rect, view])
+	expect(bg_rect.position.distance_to(Main.BACKGROUND_RECT.position) < 0.5 and bg_rect.size.distance_to(Main.BACKGROUND_RECT.size) < 0.5,
+		"the background sits on BACKGROUND_RECT (%s)" % bg_rect)
 
 	near(main.world_to_hud(Main.CAMERA_CENTER).distance_to(Vector2(320, 180)), 0.0, "the camera centre is the screen centre", 0.01)
 	var rim := main.world_to_hud(Vector2(256, 206))

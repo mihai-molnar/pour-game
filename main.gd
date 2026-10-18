@@ -22,6 +22,9 @@ const GLASS_POS := Vector2(256, 280)
 const CAMERA_CENTER := Vector2(300, 186)
 const CAMERA_ZOOM := 1.8
 const SCREEN_SIZE := Vector2(640, 360)
+## The world rect the background image covers (art/background.png, 7 image px
+## per world px; tools/background/bar.html draws it with the same numbers).
+const BACKGROUND_RECT := Rect2(110, 76, 380, 220)
 const INTRO_TIME := 1.5
 ## The last-call glass vanishes this long before the summary appears, so its popup reads.
 const SUMMARY_DELAY := 0.35
