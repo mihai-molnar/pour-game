@@ -1,15 +1,19 @@
 extends CheckBase
 ## Checks the camera framing: arriving vessels start off-screen, every vessel
-## fits the view at rest and at its common pouring tilts (clear of the HUD row
-## unless tipped far), the counter edge shows, the background covers the view,
-## and world points map onto the screen. Run:
+## fits the view at rest and at its common pouring tilts without passing behind
+## a HUD pill (a pourer's third glass, tipped further, may), the counter edge
+## shows, the background covers the view, and world points map onto the
+## screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=view
 
 ## Vessels stay this far inside the view (world px).
 const MARGIN := 2.0
-## The HUD's top row (screen px); only a pourer tipped past HUD_TILT may reach into it.
-const HUD_ROW := 22.0
-const HUD_TILT := 60.0
+## The steepest tilt past rest (°) a pourer reaches on its first two glasses
+## from full (measured with the autopilot: pitcher 48° then up to 68°, bottle
+## up to 54°); the third glass from a pourer may tip further.
+const COMMON_TILT := {&"water": 70.0, &"wine": 55.0}
+## The widest the coin pill gets in play (4-digit coins and x2.5).
+const COIN_PILL_W := 110.0
 
 
 func run() -> void:
@@ -26,21 +30,21 @@ func run() -> void:
 	expect(view.end.y >= 286.0, "the counter's front edge is in view (bottom %.1f)" % view.end.y)
 
 	var inner := view.grow(-MARGIN)
-	var below_hud := inner
-	below_hud.position.y = view.position.y + HUD_ROW / Main.CAMERA_ZOOM
-	below_hud.size.y = inner.end.y - below_hud.position.y
+	var pills := [_rect_poly(Rect2(Hud.PILL_AT, Vector2(COIN_PILL_W, Hud.PILL_H))), _rect_poly(Hud.TIMER_PILL)]
 	for d: DrinkDef in [GameState.WATER, GameState.ROUND_UNLOCKS[2]]:
-		var glass_box := _box(Transform2D(0.0, Main.GLASS_POS) * d.glass_outer)
-		expect(below_hud.encloses(glass_box), "%s glass fits below the HUD row (%s)" % [d.id, glass_box])
+		var glass := Transform2D(0.0, Main.GLASS_POS) * d.glass_outer
+		expect(inner.encloses(_box(glass)) and not _behind_pill(main, glass, pills), "%s glass fits, clear of the HUD" % d.id)
 		var lip := Main.GLASS_POS + d.pourer_offset
-		var max_tilt := 85.0 if d.refill_style == DrinkDef.RefillStyle.IN_PLACE else 35.0
 		var tilt := 0.0
-		while tilt <= max_tilt:
-			var shape := d.pourer_outer + d.pourer_handle
-			var box := _box(Transform2D(-deg_to_rad(d.pourer_rest_deg + tilt), lip) * shape)
-			var room := inner if tilt > HUD_TILT else below_hud
-			expect(room.encloses(box), "%s pourer at tilt %d fits (%s in %s)" % [d.id, tilt, box, room])
-			tilt += 5.0
+		while tilt <= COMMON_TILT[d.id]:
+			var at := Transform2D(-deg_to_rad(d.pourer_rest_deg + tilt), lip)
+			var body := at * d.pourer_outer
+			expect(inner.encloses(_box(body + at * d.pourer_handle)), "%s pourer at tilt %d fits the view" % [d.id, tilt])
+			var hidden := _behind_pill(main, body, pills)
+			if d.pourer_handle.size() >= 2:
+				hidden = hidden or _behind_pill(main, at * d.pourer_handle, pills)
+			expect(not hidden, "%s pourer at tilt %d stays clear of the HUD pills" % [d.id, tilt])
+			tilt += 2.0
 
 	var bg: Sprite2D = main.get_node("Background")
 	var bg_rect := Rect2(bg.position, bg.texture.get_size() * bg.scale)
@@ -59,6 +63,21 @@ func run() -> void:
 	near(main.world_to_hud(Main.CAMERA_CENTER).distance_to(Vector2(320, 180)), 0.0, "the camera centre is the screen centre", 0.01)
 	var rim := main.world_to_hud(Vector2(256, 206))
 	expect(Rect2(0, 0, 640, 360).has_point(rim), "the glass rim maps onto the screen (%s)" % rim)
+
+
+## True if the world polygon `p` (closed, so a handle polyline counts as its hull) overlaps a pill on screen.
+func _behind_pill(main: Main, p: PackedVector2Array, pills: Array) -> bool:
+	var on_screen := PackedVector2Array()
+	for q in p:
+		on_screen.append(main.world_to_hud(q))
+	for pill: PackedVector2Array in pills:
+		if not Geometry2D.intersect_polygons(on_screen, pill).is_empty():
+			return true
+	return false
+
+
+func _rect_poly(r: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
 
 
 func _box(p: PackedVector2Array) -> Rect2:

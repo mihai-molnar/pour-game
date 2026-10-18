@@ -47,6 +47,10 @@ func run() -> void:
 	expect(hud.streak_flyer == null, "the big copy is gone once it has landed")
 	hud.set_streak(1.0)
 	eq(hud.streak_label.text, "x1.2", "a reset first shakes the old value")
+	hud.set_coins(1234)  # Main refreshes the coins every tick, mid-shake too
+	var pill_end: float = hud._coin_pill.position.x + hud._coin_pill.size.x
+	expect(pill_end >= hud._streak_pos.x + Hud.text_width(hud.streak_label.text, Hud.SIZE),
+		"the coin pill still holds the shaking old value (pill ends at %.1f)" % pill_end)
 	hud._streak_tween.custom_step(5.0)
 	eq([hud.streak_label.text, hud.streak_label.get_theme_color("font_color"), hud.streak_label.position],
 		["x1", Palette.FROST, after_1234], "...then turns into a dim x1 back in place")

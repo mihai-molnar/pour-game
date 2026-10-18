@@ -20,7 +20,7 @@ const GLASS_POS := Vector2(256, 280)
 ## The static camera: the world point at the screen centre, and how much closer
 ## than 1:1 it shows the 640x360 world.
 const CAMERA_CENTER := Vector2(300, 186)
-const CAMERA_ZOOM := 1.8
+const CAMERA_ZOOM := 1.75
 const SCREEN_SIZE := Vector2(640, 360)
 ## The world rect the background image covers (art/background.png, 7 image px
 ## per world px; tools/background/bar.html draws it with the same numbers).
@@ -74,8 +74,6 @@ var _shot_index := 0
 
 
 func _ready() -> void:
-	camera.position = CAMERA_CENTER
-	camera.zoom = Vector2.ONE * CAMERA_ZOOM
 	shadows.glass = glass
 	shadows.pourer = pourer
 	reflection.glass = glass

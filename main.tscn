@@ -37,7 +37,7 @@ centered = false
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(300, 186)
-zoom = Vector2(1.8, 1.8)
+zoom = Vector2(1.75, 1.75)
 
 [node name="Reflection" type="Node2D" parent="."]
 clip_children = 1
