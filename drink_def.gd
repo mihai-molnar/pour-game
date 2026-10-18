@@ -29,6 +29,11 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_range(0.1, 1.0) var fill_fraction := 0.9
 ## Corner rounding (px) for drawing the glass smooth; the physics keeps the sharp shapes.
 @export var glass_corner_radius := 2.0
+## The glass is held tipped toward the pourer while pouring, the way a barman
+## pours beer: this far (°) when the pour starts, straightening to
+## glass_line_tilt_deg as the beer reaches the line. 0 = it stays upright.
+@export var glass_pour_tilt_deg := 0.0
+@export var glass_line_tilt_deg := 0.0
 
 @export_group("Payout")
 ## Coins per scoring step, before the streak multiplier.

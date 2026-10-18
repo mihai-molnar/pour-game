@@ -15,7 +15,13 @@ extends Node2D
 ## is drawn and scored) and, once landed, bounces, floats and drifts in a small
 ## visual-only simulation (IcePhysics); a lime wedge drops onto the left rim.
 ## A beer glass holds a head (Foam) on top of the beer: it takes up room (a
-## head over the rim is a spill) and drains beer back into the glass.
+## head over the rim is a spill) and drains beer back into the glass. It is
+## also held tipped toward the pourer while pouring (step_tilt): tipping is
+## gameplay — the liquid's surface stays level in the world, so in the glass's
+## own frame it is a sloped line (calm_y) whose height for a volume is solved
+## over the pixel columns, and a tipped glass holds less — but the glass is
+## always upright again before it is served. The tilt turns the draw layers
+## about the mouth (frame()); the node never rotates.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -49,6 +55,12 @@ const LIME_ANGLE := -0.7
 const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4)]
 ## The fastest a cube enters the glass (px/s): the scripted fall ends faster.
 const ICE_ENTRY_SPEED := 220.0
+## Tipping while pouring: time constants (s) tipping in and coming back, how
+## long a gap in the pour it rides out (s), and the angle (rad) it snaps upright from.
+const TILT_IN := 0.1
+const TILT_OUT := 0.12
+const TILT_GRACE := 0.25
+const TILT_SNAP := 0.002
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -92,6 +104,12 @@ var _clock := 0.0  # visual time, for the cubes' drift
 ## The head on a beer (null for drinks without one).
 var foam: Foam
 var _foam_level := 0.0  # local y of the calm head's top
+## How far it is tipped toward the pourer (rad; + = the top leans right,
+## clockwise on screen). Gameplay: levels, room and landing use it.
+var tilt := 0.0
+var _tilt_idle := TILT_GRACE  # seconds since the pour last wanted it tipped
+var _lean := 0.0  # the arrival's lean (rad)
+var _mouth := Vector2.ZERO  # local: the middle of the opening, what it tips about
 
 @onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
@@ -111,6 +129,9 @@ func setup(d: DrinkDef) -> void:
 	interior = d.glass_interior
 	outer = d.glass_outer
 	_rasterize()
+	_mouth = Vector2((_row_left[0] + _row_right[0] + 1) * 0.5, _y0)
+	tilt = 0.0
+	_tilt_idle = TILT_GRACE
 	_drawn_outer = VesselArt.rounded(outer, d.glass_corner_radius)
 	_drawn_interior = VesselArt.rounded(interior, d.glass_corner_radius, true)
 	_walls = VesselArt.walls(_drawn_outer, _drawn_interior)
@@ -189,7 +210,7 @@ func _ice() -> GarnishDef:
 func surface_level(liquid: float) -> float:
 	var ice := _ice()
 	if ice == null:
-		return level_for(liquid)
+		return level_for(liquid) if tilt == 0.0 else _sloped_level(liquid)
 	var cubes_w := ice.cube_count * ice.cube_size
 	var sub := ice.float_share * ice.cube_size
 	var remaining := liquid
@@ -223,7 +244,11 @@ func displaced(liquid: float) -> float:
 func max_liquid() -> float:
 	var ice := _ice()
 	if ice == null:
-		return capacity
+		if tilt == 0.0:
+			return capacity
+		# Tipped: up to the level line through the rim corner that is highest in the world.
+		var k := tan(tilt)
+		return _area_below(_y0 + maxf(k * (_row_left[0] - _mouth.x), k * (_row_right[0] + 1 - _mouth.x)))
 	var cubes_w := ice.cube_count * ice.cube_size
 	var sub := ice.float_share * ice.cube_size
 	var room := 0.0
@@ -235,6 +260,85 @@ func max_liquid() -> float:
 		var split := clampf(sub, d0, d0 + 1.0)
 		room += (split - d0) * maxf(a - cubes_w, 0.5) + (d0 + 1.0 - split) * a
 	return room
+
+
+## Local y of the world-level line at local x whose height at the mouth's x
+## is `level`: flat when upright, sloped while tipped.
+func calm_y(x: float, level: float) -> float:
+	return level - tan(tilt) * (x - _mouth.x)
+
+
+## The area inside the glass under the level line of height `level` (see
+## calm_y): each pixel column's run below the line. At tilt 0 this is what
+## level_for inverts.
+func _area_below(level: float) -> float:
+	var k := tan(tilt)
+	var total := 0.0
+	for c in _col_top.size():
+		var top := float(_col_top[c])
+		var bottom := float(_col_bottom[c])
+		if bottom <= top:
+			continue
+		var y := level - k * (_x0 + c + 0.5 - _mouth.x)
+		total += clampf(bottom - maxf(y, top), 0.0, bottom - top)
+	return total
+
+
+## The height (at the mouth's x) of the tipped glass's level surface holding `vol`.
+func _sloped_level(vol: float) -> float:
+	var lo := float(_y0) - 80.0
+	var hi := _floor_y + 80.0
+	for i in 22:
+		var mid := (lo + hi) * 0.5
+		if _area_below(mid) > vol:
+			lo = mid
+		else:
+			hi = mid
+	return (lo + hi) * 0.5
+
+
+## Tips the glass toward the pourer while `pouring` (DOWN held, beer flowing
+## or in the air), riding out gaps shorter than TILT_GRACE, and brings it back
+## exactly upright after. It straightens as the beer nears the line. Nothing
+## for a drink that isn't poured tipped, or while it slides in.
+func step_tilt(dt: float, pouring: bool) -> void:
+	if def == null or def.glass_pour_tilt_deg <= 0.0:
+		return
+	if pouring and visible and not is_arriving():
+		_tilt_idle = 0.0
+	else:
+		_tilt_idle += dt
+	var want := 0.0
+	if _tilt_idle < TILT_GRACE:
+		var held := volume + (foam.beer if foam != null else 0.0)
+		want = deg_to_rad(lerpf(def.glass_pour_tilt_deg, def.glass_line_tilt_deg, clampf(held / target, 0.0, 1.0)))
+	tilt += (want - tilt) * (1.0 - exp(-dt / (TILT_IN if want > tilt else TILT_OUT)))
+	if want == 0.0 and absf(tilt) < TILT_SNAP:
+		tilt = 0.0
+	_apply_frame()
+
+
+func is_upright() -> bool:
+	return tilt == 0.0
+
+
+## The middle of the opening (local): what the glass tips about.
+func pivot() -> Vector2:
+	return _mouth
+
+
+## Local -> this node's space: the tilt about the mouth (identity when upright).
+func frame() -> Transform2D:
+	return Transform2D(tilt, _mouth - _mouth.rotated(tilt))
+
+
+## A world point in the glass's own (tipped) frame, and back.
+func to_glass(world: Vector2) -> Vector2:
+	return frame().affine_inverse() * (world - global_position)
+
+
+func from_glass(local: Vector2) -> Vector2:
+	return global_position + frame() * local
 
 
 ## Sets the glass up for `d` (empty), puts it off-screen left and starts
@@ -259,6 +363,8 @@ func place(at: Vector2) -> void:
 	_last_x = at.x
 	_last_vx = 0.0
 	_arrive_t = -1.0
+	tilt = 0.0
+	_tilt_idle = TILT_GRACE
 	_apply_lean(0.0)
 
 
@@ -266,6 +372,8 @@ func place(at: Vector2) -> void:
 func vanish() -> void:
 	visible = false
 	_arrive_t = -1.0
+	tilt = 0.0
+	_tilt_idle = TILT_GRACE
 	_apply_lean(0.0)
 
 
@@ -297,9 +405,15 @@ func _step_arrival(dt: float) -> void:
 
 ## Turns the drawing by `angle` about the arrival pivot (the node stays put).
 func _apply_lean(angle: float) -> void:
+	_lean = angle
+	_apply_frame()
+
+
+## The draw layers follow the arrival's lean and the tilt about the mouth.
+func _apply_frame() -> void:
+	var t := Transform2D(_lean, _pivot - _pivot.rotated(_lean)) * frame()
 	for layer: Node2D in [_back, _liquid, _front]:
-		layer.rotation = angle
-		layer.position = _pivot - _pivot.rotated(angle)
+		layer.transform = t
 
 
 func _rasterize() -> void:
@@ -403,10 +517,10 @@ func liquid_polygon() -> PackedVector2Array:
 		return PackedVector2Array()
 	var n := _col_top.size()
 	var bottom := float(_y0 + _row_area.size()) + 1.0
-	var shape := PackedVector2Array([Vector2(_x0 - 1.0, _level - _wave_h[0])])
+	var shape := PackedVector2Array([Vector2(_x0 - 1.0, minf(calm_y(_x0 - 1.0, _level) - _wave_h[0], bottom))])
 	for c in n:
-		shape.append(Vector2(_x0 + c + 0.5, _level - _wave_h[c]))
-	shape.append(Vector2(_x0 + n + 1.0, _level - _wave_h[n - 1]))
+		shape.append(Vector2(_x0 + c + 0.5, minf(calm_y(_x0 + c + 0.5, _level) - _wave_h[c], bottom)))
+	shape.append(Vector2(_x0 + n + 1.0, minf(calm_y(_x0 + n + 1.0, _level) - _wave_h[n - 1], bottom)))
 	shape.append(Vector2(_x0 + n + 1.0, bottom))
 	shape.append(Vector2(_x0 - 1.0, bottom))
 	var best := PackedVector2Array()
@@ -426,11 +540,12 @@ func foam_polygon() -> PackedVector2Array:
 		return PackedVector2Array()
 	var n := _col_top.size()
 	var top := _foam_level
-	var shape := PackedVector2Array([Vector2(_x0 - 1.0, top), Vector2(_x0 + n + 1.0, top)])
-	shape.append(Vector2(_x0 + n + 1.0, maxf(_level - _wave_h[n - 1], top)))
+	var shape := PackedVector2Array([Vector2(_x0 - 1.0, calm_y(_x0 - 1.0, top)), Vector2(_x0 + n + 1.0, calm_y(_x0 + n + 1.0, top))])
+	shape.append(Vector2(_x0 + n + 1.0, maxf(calm_y(_x0 + n + 1.0, _level) - _wave_h[n - 1], calm_y(_x0 + n + 1.0, top))))
 	for c in range(n - 1, -1, -1):
-		shape.append(Vector2(_x0 + c + 0.5, maxf(_level - _wave_h[c], top)))
-	shape.append(Vector2(_x0 - 1.0, maxf(_level - _wave_h[0], top)))
+		var x := _x0 + c + 0.5
+		shape.append(Vector2(x, maxf(calm_y(x, _level) - _wave_h[c], calm_y(x, top))))
+	shape.append(Vector2(_x0 - 1.0, maxf(calm_y(_x0 - 1.0, _level) - _wave_h[0], calm_y(_x0 - 1.0, top))))
 	var best := PackedVector2Array()
 	var best_area := 0.5
 	for poly in Geometry2D.intersect_polygons(_drawn_interior, shape):
@@ -472,7 +587,7 @@ func _col(x_world: float) -> int:
 func _surface_local(c: int) -> float:
 	if volume < 0.5:
 		return float(_col_bottom[c])
-	return minf(_level - _wave_h[c], float(_col_bottom[c]))
+	return minf(calm_y(_x0 + c + 0.5, _level) - _wave_h[c], float(_col_bottom[c]))
 
 
 ## True if the pixel at local (x, y) is inside the glass.
@@ -506,11 +621,16 @@ func settled_volume() -> float:
 
 
 func receive(x_world: float, vol: float, speed: float) -> void:
+	receive_local(x_world - global_position.x, vol, speed)
+
+
+## Liquid landing at local x (the glass's own frame, tipped or not).
+func receive_local(x: float, vol: float, speed: float) -> void:
 	volume += foam.land(vol) if foam != null else vol
 	_overflow()
 	if ice != null:
-		ice.push(x_world - global_position.x, vol * speed * 0.004)
-	var c := _col(x_world)
+		ice.push(x, vol * speed * 0.004)
+	var c := clampi(floori(x) - _x0, 0, _wave_h.size() - 1)
 	var kick := vol * speed * impact_gain
 	_wave_v[c] -= kick
 	if c > 0:
@@ -601,6 +721,9 @@ func step(dt: float) -> void:
 		var b := _bubbles[i]
 		b.y -= b.z * dt
 		var wobbled := b.x + sin(b.y * 0.7) * 0.15
+		if tilt != 0.0:  # rise toward world-up through the tipped glass
+			b.y += b.z * dt * (1.0 - cos(tilt))
+			wobbled -= b.z * dt * sin(tilt)
 		if _inside(wobbled, b.y):
 			b.x = wobbled
 		var c := clampi(floori(b.x) - _x0, 0, n - 1)
@@ -663,7 +786,7 @@ func _cube_poses(g: GarnishDef) -> Array[Vector3]:
 func _surface_at(x: float) -> float:
 	if volume < 0.5:
 		return INF
-	return _level - _wave_h[clampi(floori(x) - _x0, 0, _wave_h.size() - 1)]
+	return calm_y(x, _level) - _wave_h[clampi(floori(x) - _x0, 0, _wave_h.size() - 1)]
 
 
 ## Where the lime's slit sits on the left rim (local).
@@ -732,7 +855,7 @@ func _draw_front(ci: CanvasItem) -> void:
 	if volume >= 0.5:
 		var surface := PackedVector2Array()
 		for c in _col_top.size():
-			var y := _level - _wave_h[c]
+			var y := calm_y(_x0 + c + 0.5, _level) - _wave_h[c]
 			if y >= _col_top[c] and y < _col_bottom[c]:
 				surface.append(Vector2(_x0 + c + 0.5, y))
 		if surface.size() >= 2:
