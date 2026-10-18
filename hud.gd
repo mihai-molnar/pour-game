@@ -162,11 +162,12 @@ static func format_mult(mult: float) -> String:
 	return "x%d" % roundi(m) if is_equal_approx(m, roundf(m)) else "x%.1f" % m
 
 
-## The INTRO banner: "ROUND N", plus a second line naming a drink unlocked this round.
-static func round_banner(round_number: int, unlocked: DrinkDef) -> String:
+## The INTRO banner: "ROUND N", plus a second line naming a drink bought in
+## the shop since the last round.
+static func round_banner(round_number: int, new_drink: DrinkDef) -> String:
 	var text := "ROUND %d" % round_number
-	if unlocked != null:
-		text += "\nNEW DRINK: %s" % unlocked.display_name.to_upper()
+	if new_drink != null:
+		text += "\nNEW DRINK: %s" % new_drink.display_name.to_upper()
 	return text
 
 

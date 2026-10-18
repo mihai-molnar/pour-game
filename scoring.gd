@@ -1,7 +1,8 @@
 class_name Scoring
 ## Pure scoring rules. A glass is judged by how many pixel rows its settled
 ## surface sits from the fill line, as drawn (Glass.rows_from_line): each step
-## pays a fixed amount from the DrinkDef and an overflow costs coins. No scene
+## pays a fixed amount from the DrinkDef (more with garnishes) and an overflow
+## costs coins. No scene
 ## dependencies, so tools/checks/check_scoring.gd tests them directly.
 
 const PERFECT := &"PERFECT"
@@ -38,6 +39,17 @@ static func base_coins(b: StringName, def: DrinkDef) -> int:
 	return 0
 
 
+## A step's coins with the garnishes on the glass: each adds its `bonus` share,
+## rounded to whole coins (before the streak). A MISS or a spill is unchanged.
+static func garnished_coins(base: int, garnishes: Array[GarnishDef]) -> int:
+	if base <= 0:
+		return base
+	var bonus := 0.0
+	for g in garnishes:
+		bonus += g.bonus
+	return roundi(base * (1.0 + bonus))
+
+
 ## The streak: GOOD-or-better glasses in a row. GOOD ENOUGH holds it; MISS
 ## and SPILL reset it.
 static func next_streak(streak: int, b: StringName) -> int:
@@ -67,13 +79,19 @@ static func paid_coins(base: int, streak_before: int, stats: Dictionary) -> int:
 ## Scores one served glass. `rows` = rows from the line as drawn; `error` = the
 ## signed volume error relative to the target (passed through for tools and the
 ## debug readout). `coins` is the nominal payout — negative for a spill; Main
-## stops the coin total at 0. `streak` is the streak after this glass.
-static func score(rows: int, error: float, spilled: bool, streak_before: int, def: DrinkDef, stats: Dictionary) -> Dictionary:
+## stops the coin total at 0. `streak` is the streak after this glass;
+## `garnishes` the ids of those that were on it.
+static func score(rows: int, error: float, spilled: bool, streak_before: int, def: DrinkDef, stats: Dictionary,
+		garnishes: Array[GarnishDef] = []) -> Dictionary:
 	var b := band(rows, spilled, stats)
+	var ids: Array[StringName] = []
+	for g in garnishes:
+		ids.append(g.id)
 	return {
 		"band": b,
 		"rows": rows,
 		"error": error,
-		"coins": paid_coins(base_coins(b, def), streak_before, stats),
+		"coins": paid_coins(garnished_coins(base_coins(b, def), garnishes), streak_before, stats),
 		"streak": next_streak(streak_before, b),
+		"garnishes": ids,
 	}

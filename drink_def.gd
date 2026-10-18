@@ -1,7 +1,7 @@
 class_name DrinkDef
 extends Resource
 ## Everything that makes a drink a drink: the glass, the container you pour
-## from, the fill line, the payout and the pour feel. One .tres per drink in
+## from, the fill line, the payout, its price and garnishes, and the pour feel. One .tres per drink in
 ## res://drinks/. Shapes are local pixels with y down: the glass origin is its
 ## bottom center; the pourer origin is the spout lip (the tilt pivot). Pourer
 ## shapes are authored upright even when the pourer is held tipped
@@ -37,6 +37,12 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var ok_coins := 3
 ## What an overflow costs (never multiplied; the coin total stops at 0).
 @export var spill_coins := 6
+
+@export_group("Shop")
+## Coins it costs in the shop; 0 = owned from the start.
+@export var price := 0
+## What can be added to its glass while serving it (each bought once in the shop).
+@export var garnishes: Array[GarnishDef] = []
 
 @export_group("Pourer")
 @export var pourer_interior := PackedVector2Array()

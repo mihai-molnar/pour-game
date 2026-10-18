@@ -8,7 +8,7 @@ extends CheckBase
 
 func run() -> void:
 	var water: DrinkDef = GameState.WATER
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
+	var wine: DrinkDef = GameState.WINE
 
 	var r := VesselArt.rounded(water.glass_outer, 2.0)
 	near(Pourer.poly_area(r) / Pourer.poly_area(water.glass_outer), 1.0, "rounding keeps the area", 0.02)

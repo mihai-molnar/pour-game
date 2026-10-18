@@ -17,7 +17,7 @@ func run() -> void:
 	eq(Hud.format_mult(2.0), "x2", "x2")
 	eq(Hud.format_mult(3.0), "x3", "x3")
 	eq(Hud.round_banner(1, null), "ROUND 1", "plain round banner")
-	eq(Hud.round_banner(2, GameState.ROUND_UNLOCKS[2]), "ROUND 2\nNEW DRINK: WINE", "the unlock banner names the drink")
+	eq(Hud.round_banner(2, GameState.WINE), "ROUND 2\nNEW DRINK: WINE", "the unlock banner names the drink")
 
 	var hud: Hud = load("res://hud.gd").new()
 	add_child(hud)

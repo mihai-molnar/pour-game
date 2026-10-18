@@ -25,7 +25,8 @@ func run() -> void:
 	_spill_costs_coins_but_never_below_zero()
 	_space_ignored_during_swap_and_refill()
 	_next_round_resets_and_reads_stats()
-	_round_two_unlocks_wine()
+	_round_two_is_water_only()
+	_bought_wine_opens_the_next_round()
 	_picks_follow_the_seed()
 	_drink_change_swaps_the_pourer()
 	_mixed_round_with_autopilot()
@@ -187,7 +188,7 @@ func _last_call_waits_for_a_refill() -> void:
 ## 0:00 while a replacement bottle slides in: the glass is still on the
 ## counter, so it gets its last call (the bottle refill finishes first).
 func _time_up_during_a_bottle_refill() -> void:
-	_fresh(2, 3)
+	_fresh_with_wine(3)
 	_run(Main.INTRO_TIME + 0.5)  # the opening wine bottle has arrived and popped its cork
 	main.glass.receive(Main.GLASS_POS.x, main.glass.target * 0.8, 0.0)
 	main.pourer.volume = main.pourer.full_volume * 0.001
@@ -309,32 +310,54 @@ func _next_round_resets_and_reads_stats() -> void:
 	GameState.stats = GameState.BASE_STATS.duplicate()
 
 
-func _round_two_unlocks_wine() -> void:
+## Round 2 of a session that bought wine in the shop: it opens with wine.
+func _fresh_with_wine(seed_value: int) -> void:
+	GameState.reset_session(seed_value)
+	GameState.coins = 80
+	GameState.buy_drink(GameState.WINE)
+	GameState.coins = 0
+	GameState.round_number = 2
+	main.start_round()
+
+
+func _round_two_is_water_only() -> void:
 	_fresh(2, 5)
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
-	expect(GameState.owned_drinks.has(wine), "round 2 unlocks wine")
-	expect(main.drink == wine and main.glass.def == wine and main.pourer.def == wine, "round 2 opens with wine: glass and bottle")
+	eq(main.hud.banner_label.text, "ROUND 2", "round 2 brings no drink by itself")
+	var seen := {}
+	for i in 40:
+		seen[main._pick_drink().id] = true
+	eq(seen.keys(), [&"water"], "nothing bought: only water")
+
+
+func _bought_wine_opens_the_next_round() -> void:
+	_fresh_with_wine(5)
+	var wine: DrinkDef = GameState.WINE
+	expect(main.drink == wine and main.glass.def == wine and main.pourer.def == wine, "the round after buying wine opens with wine")
 	eq(main.hud.banner_label.text, "ROUND 2\nNEW DRINK: WINE", "the banner names the new drink")
 	var seen := {}
 	for i in 40:
 		seen[main._pick_drink().id] = true
-	expect(seen.has(&"water") and seen.has(&"wine"), "after the first glass, picks include both drinks (%s)" % [seen.keys()])
+	expect(seen.has(&"water") and seen.has(&"wine"), "later picks include both drinks (%s)" % [seen.keys()])
+	GameState.set_on_menu(GameState.WATER, false)
+	seen.clear()
+	for i in 20:
+		seen[main._pick_drink().id] = true
+	eq(seen.keys(), [&"wine"], "picks come from the menu")
 	GameState.round_number = 3
 	main.start_round()
-	eq(main.hud.banner_label.text, "ROUND 3", "no unlock banner once wine is owned")
-	eq(GameState.owned_drinks.size(), 2, "wine isn't added twice")
+	eq(main.hud.banner_label.text, "ROUND 3", "no banner once wine isn't new")
 
 
 func _picks_follow_the_seed() -> void:
 	var runs: Array = []
 	for attempt in 2:
-		_fresh(2, 42)
+		_fresh_with_wine(42)
 		var ids: Array[StringName] = [main.drink.id]
 		for i in 20:
 			ids.append(main._pick_drink().id)
 		runs.append(ids)
 	expect(runs[0] == runs[1], "the same seed picks the same drinks")
-	_fresh(2, 43)
+	_fresh_with_wine(43)
 	var other: Array[StringName] = [main.drink.id]
 	for i in 20:
 		other.append(main._pick_drink().id)
@@ -342,10 +365,10 @@ func _picks_follow_the_seed() -> void:
 
 
 func _drink_change_swaps_the_pourer() -> void:
-	_fresh(2, 3)
+	_fresh_with_wine(3)
 	_run(Main.INTRO_TIME + DT)
 	var water: DrinkDef = GameState.WATER
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
+	var wine: DrinkDef = GameState.WINE
 	expect(main.drink == wine and not main.pourer.is_busy(), "wine is ready to pour")
 	main.pourer.volume = main.pourer.full_volume * 0.5
 	_serve_with_next(water)
@@ -371,7 +394,7 @@ func _drink_change_swaps_the_pourer() -> void:
 
 
 func _mixed_round_with_autopilot() -> void:
-	_fresh(2, 11)  # a seed that serves both drinks this round
+	_fresh_with_wine(11)  # a seed that serves both drinks this round
 	var pilot := Autopilot.new()
 	var t := 0.0
 	while main.phase != Main.Phase.SUMMARY and t < 60.0:

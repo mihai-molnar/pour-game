@@ -6,6 +6,7 @@
 script = ExtResource("1_drink")
 id = &"wine"
 display_name = "Wine"
+price = 80
 liquid_color = Color(0.635294, 0.14902, 0.2, 1)
 liquid_highlight = Color(0.894118, 0.231373, 0.266667, 1)
 liquid_absorb = Vector3(0.017, 0.085, 0.075)

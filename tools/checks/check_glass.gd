@@ -16,7 +16,7 @@ func run() -> void:
 	main.manual = true
 	var glass: Glass = main.glass
 	var water: DrinkDef = GameState.WATER
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
+	var wine: DrinkDef = GameState.WINE
 	glass.place(HOME)
 	expect(glass.def == water, "glass is set up with water")
 	expect(glass.capacity == 2346.0, "capacity = interior pixel count (got %d)" % glass.capacity)

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GarnishDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://garnish_def.gd" id="1_garnish"]
+
+[resource]
+script = ExtResource("1_garnish")
+id = &"lime"
+display_name = "Lime"
+description = "Water pays +30%"
+price = 15
+bonus = 0.3
+kind = 1
+key = 4194319

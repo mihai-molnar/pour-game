@@ -62,7 +62,7 @@ var results: Array[Dictionary] = []
 
 var _serve_queued := false
 var _summary_in := -1.0  # >= 0 while the last-call glass's puff plays before the summary
-var _force_next: DrinkDef  # the next glass's drink when it isn't random (a just-unlocked drink)
+var _force_next: DrinkDef  # the next glass's drink when it isn't random (a just-bought drink)
 var _idle := 0.0
 var _autopilot: Autopilot
 var _clock := 0.0
@@ -118,14 +118,14 @@ func start_round() -> void:
 	_summary_in = -1.0
 	_idle = 0.0
 	stream.clear()
-	var unlocked := GameState.unlock_for_round(GameState.round_number)
-	_force_next = unlocked
+	var fresh := GameState.take_new_drink()
+	_force_next = fresh
 	drink = _pick_drink()
 	stream.set_drink(drink)
 	glass.arrive(drink, GLASS_POS)
 	pourer.arrive(drink, GLASS_POS + drink.pourer_offset)
 	summary.hide_results()
-	hud.show_banner(Hud.round_banner(GameState.round_number, unlocked), INTRO_TIME)
+	hud.show_banner(Hud.round_banner(GameState.round_number, fresh), INTRO_TIME)
 	hud.set_streak(1.0, false)  # a new round's x1 isn't a broken streak
 	_refresh_hud()
 
@@ -137,14 +137,14 @@ func next_round() -> void:
 	start_round()
 
 
-## The next glass's drink: a just-unlocked drink first, otherwise any owned drink.
+## The next glass's drink: a just-bought drink first, otherwise any drink on the menu.
 func _pick_drink() -> DrinkDef:
 	if _force_next != null:
 		var d := _force_next
 		_force_next = null
 		return d
-	var owned := GameState.owned_drinks
-	return owned[GameState.rng.randi_range(0, owned.size() - 1)]
+	var menu := GameState.menu
+	return menu[GameState.rng.randi_range(0, menu.size() - 1)]
 
 
 ## The world rect the camera shows.
