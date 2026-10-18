@@ -77,3 +77,20 @@ func run() -> void:
 	shop.toggle(water)
 	expect(GameState.menu.size() == 2, "water back on")
 	shop.free()
+
+	# Menu art: printed-menu illustrations and marker bars, all drawable.
+	var polys: Array[PackedVector2Array] = []
+	polys.append_array(MenuArt.ice_polygons(Vector2.ZERO, 10.0))
+	polys.append_array(GarnishArt.lime_polygons(Vector2.ZERO, 9.0, Glass.LIME_ANGLE))
+	for d: DrinkDef in GameState.DRINKS:
+		polys.append_array(MenuArt.glass_polygons(d, Rect2(0, 0, 20, 24), d.fill_fraction))
+		polys.append_array(MenuArt.bottle_polygons(d, Rect2(0, 0, 14, 26)))
+	for i in 12:
+		polys.append(MenuArt.redacted_polygon(Rect2(0, 0, 60 + i * 9, 9), i))
+	var bad := 0
+	for p in polys:
+		if p.size() >= 3 and Geometry2D.triangulate_polygon(p).is_empty():
+			bad += 1
+	eq(bad, 0, "every menu illustration and marker bar triangulates (%d shapes)" % polys.size())
+	expect(MenuArt.redacted_polygon(Rect2(0, 0, 80, 9), 3) == MenuArt.redacted_polygon(Rect2(0, 0, 80, 9), 3), "a marker bar is the same every visit")
+	expect(MenuArt.title_font() != null and MenuArt.type_font(true) != null, "the menu fonts load")

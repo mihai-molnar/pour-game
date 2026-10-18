@@ -22,6 +22,16 @@ const BOTTLE := Color("265c42")
 const LIME_PEEL := Color("3e8948")
 const LIME_FLESH := Color("d4ec8e")
 
+## The shop's printed menu: the paper, its ink and the shade of its edges,
+## the index tabs (UPGRADES, DRINKS, MENU) and the OWNED stamp.
+const PAPER := Color("f3eee3")
+const MENU_INK := Color("2e2a2b")
+const PAPER_SHADE := Color("ddd3bf")
+const TAB_UPGRADES := Color("c0674b")
+const TAB_DRINKS := Color("8aa37b")
+const TAB_MENU := Color("6f8fae")
+const STAMP := Color("b8423c")
+
 const GOLD := Color("feae34")
 const GREEN := Color("63c74d")
 const RED := Color("e43b44")
