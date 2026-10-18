@@ -34,7 +34,7 @@ const ACTIVE_SHARE := 0.01
 ## Result popups float this far above the glass's rim (world px).
 const POPUP_ABOVE_RIM := 14.0
 const AUTOPLAY_SUMMARY_WAIT := 1.5
-const HINT := "HOLD DOWN: POUR   SPACE: SERVE   F1: DEBUG"
+const HINT := "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug"
 
 @onready var glass: Glass = $Glass
 @onready var pourer: Pourer = $Pourer

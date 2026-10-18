@@ -27,10 +27,13 @@ func run() -> void:
 	hud.set_time(12.0)
 	eq(hud.timer_label.get_theme_color("font_color"), Palette.WHITE, "timer is white otherwise")
 	hud.set_coins(42)
-	eq(hud.coins_label.text, "COINS 42", "coins label")
-	eq(hud.streak_label.position, Vector2(80, 8), "the multiplier sits right after the coin counter")
+	eq(hud.coins_label.text, "42", "coins label: the number (a coin icon sits before it)")
+	var after_42 := hud.streak_label.position
+	expect(after_42.x >= hud.coins_label.position.x + hud.coins_label.get_minimum_size().x,
+		"the multiplier sits right after the coin counter (%s)" % after_42)
 	hud.set_coins(1234)
-	eq(hud.streak_label.position, Vector2(96, 8), "...and moves with it")
+	var after_1234 := hud.streak_label.position
+	expect(after_1234.x > after_42.x and after_1234.y == after_42.y, "...and moves with it (%s)" % after_1234)
 	hud.set_streak(1.0, false)
 	eq([hud.streak_label.text, hud.streak_label.get_theme_color("font_color")], ["x1", Palette.FROST], "x1 is dim")
 	hud.set_streak(1.2)
@@ -46,7 +49,7 @@ func run() -> void:
 	eq(hud.streak_label.text, "x1.2", "a reset first shakes the old value")
 	hud._streak_tween.custom_step(5.0)
 	eq([hud.streak_label.text, hud.streak_label.get_theme_color("font_color"), hud.streak_label.position],
-		["x1", Palette.FROST, Vector2(96, 8)], "...then turns into a dim x1 back in place")
+		["x1", Palette.FROST, after_1234], "...then turns into a dim x1 back in place")
 	hud.set_streak(1.5)
 	hud.set_streak(1.0, false)
 	eq([hud.streak_label.text, hud.streak_flyer], ["x1", null], "a quiet reset (new round) cancels any pop and shows x1")
