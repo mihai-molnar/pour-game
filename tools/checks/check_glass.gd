@@ -51,6 +51,7 @@ func run() -> void:
 	_check_lime(glass, water)
 	_check_ice_physics(glass, water)
 	_check_wine(glass, wine)
+	_check_foam(glass, GameState.BEER)
 	glass.setup(water)
 	expect(glass.capacity == 2346.0 and is_equal_approx(glass.target, want), "back to water: same capacity and target")
 	expect(glass.opening_world() == Vector2(237, 275), "back to water: same opening (got %s)" % glass.opening_world())
@@ -86,6 +87,38 @@ func _check_wine(glass: Glass, wine: DrinkDef) -> void:
 	var mat := (glass.get_node("Liquid") as CanvasItem).material as ShaderMaterial
 	eq([mat.get_shader_parameter("tint"), mat.get_shader_parameter("absorb"), mat.get_shader_parameter("scatter")],
 		[wine.liquid_color, wine.liquid_absorb, wine.liquid_scatter], "wine: the liquid shader gets wine's look")
+
+
+## Beer's head: a fast pour builds it on top of the beer, every px² of beer
+## is accounted for, the stream lands on it, it is drawn as big as it is, the
+## beer creeps up as it drains, and running it over the rim is a spill.
+func _check_foam(glass: Glass, beer: DrinkDef) -> void:
+	glass.setup(beer)
+	glass.place(HOME)
+	expect(glass.foam != null and glass.foam.volume == 0.0, "a beer glass starts without a head")
+	var landed := 0.0
+	for i in 120:  # 2 s at about 600 px²/s
+		glass.receive(HOME.x, 10.0, 200.0)
+		landed += 10.0
+		glass.step(DT)
+	expect(glass.foam.volume > 300.0, "a fast pour builds a head (%.0f px²)" % glass.foam.volume)
+	near(glass.volume + glass.foam.beer + glass.spilled, landed, "beer: landed = liquid + head's beer + spilled", 0.05)
+	expect(glass.foam_level() < glass.surface_level(glass.volume) - 5.0, "the head sits on top of the beer")
+	near(glass.surface_y_world_at(HOME.x) - HOME.y, glass.foam_level(), "the stream lands on the head", 1.5)
+	var poly := glass.foam_polygon()
+	expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "the head is drawable")
+	near(Pourer.poly_area(poly) / glass.foam.volume, 1.0, "the drawn head's area matches its volume", 0.06)
+	var before := glass.volume
+	var settled := glass.settled_volume()
+	_steps(glass, 4.0)
+	expect(glass.volume > before and absf(glass.volume - settled) < 20.0,
+		"the beer creeps up as the head drains (%.0f -> %.0f, predicted %.0f)" % [before, glass.volume, settled])
+	glass.receive(HOME.x, glass.capacity, 0.0)  # far too much: the head runs over first
+	expect(glass.spilled > 0.5 and glass.volume + glass.foam.volume <= glass.max_liquid() + 0.01, "an overflowing head is a spill")
+	glass.reset()
+	expect(glass.foam.volume == 0.0 and glass.volume == 0.0, "reset clears the head")
+	glass.setup(GameState.WATER)
+	expect(glass.foam == null, "water has no head")
 
 
 ## The target marker runs from the bracket to the glass's left wall, never across the glass.

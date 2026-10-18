@@ -429,11 +429,12 @@ func _refresh_hud() -> void:
 		var extras: Array[String] = []
 		for g in glass.garnishes:
 			extras.append(String(g.id))
-		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d  PHASE %s\nGARNISH %s" % [
+		var head := "\nFOAM %d (%d beer)" % [roundi(glass.foam.volume), roundi(glass.foam.beer)] if glass.foam != null else ""
+		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d  PHASE %s\nGARNISH %s%s" % [
 			roundi(rad_to_deg(pourer.tilt)), roundi(pourer.flow),
 			roundi(pourer.volume), roundi(pourer.full_volume),
 			roundi(glass.volume), roundi(glass.target), err,
-			stream.parcel_count(), Phase.keys()[phase], ", ".join(extras) if not extras.is_empty() else "-",
+			stream.parcel_count(), Phase.keys()[phase], ", ".join(extras) if not extras.is_empty() else "-", head,
 		])
 
 

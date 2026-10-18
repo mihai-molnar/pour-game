@@ -14,6 +14,8 @@ extends Node2D
 ## is served: ice falls in and takes up room (surface_level, max_liquid — what
 ## is drawn and scored) and, once landed, bounces, floats and drifts in a small
 ## visual-only simulation (IcePhysics); a lime wedge drops onto the left rim.
+## A beer glass holds a head (Foam) on top of the beer: it takes up room (a
+## head over the rim is a spill) and drains beer back into the glass.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -87,6 +89,9 @@ var ice: IcePhysics
 var _garnish_t: Array[float] = []  # seconds since each garnish was added
 var _floor_y := 0.0  # local y of the interior's floor
 var _clock := 0.0  # visual time, for the cubes' drift
+## The head on a beer (null for drinks without one).
+var foam: Foam
+var _foam_level := 0.0  # local y of the calm head's top
 
 @onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
@@ -136,6 +141,8 @@ func reset() -> void:
 	garnishes.clear()
 	_garnish_t.clear()
 	ice = null
+	foam = Foam.new(def) if def != null and def.has_foam() else null
+	_foam_level = _level
 
 
 ## Adds a garnish: ice starts falling, the lime starts dropping onto the rim.
@@ -412,6 +419,28 @@ func liquid_polygon() -> PackedVector2Array:
 	return best
 
 
+## The head as drawn (local): from the liquid's wavy surface up to the calm
+## top of the head, cut to the rounded inside. Empty when there is (next to) none.
+func foam_polygon() -> PackedVector2Array:
+	if foam == null or foam.volume < 0.5:
+		return PackedVector2Array()
+	var n := _col_top.size()
+	var top := _foam_level
+	var shape := PackedVector2Array([Vector2(_x0 - 1.0, top), Vector2(_x0 + n + 1.0, top)])
+	shape.append(Vector2(_x0 + n + 1.0, maxf(_level - _wave_h[n - 1], top)))
+	for c in range(n - 1, -1, -1):
+		shape.append(Vector2(_x0 + c + 0.5, maxf(_level - _wave_h[c], top)))
+	shape.append(Vector2(_x0 - 1.0, maxf(_level - _wave_h[0], top)))
+	var best := PackedVector2Array()
+	var best_area := 0.5
+	for poly in Geometry2D.intersect_polygons(_drawn_interior, shape):
+		var a := Pourer.poly_area(poly)
+		if a >= best_area:
+			best = poly
+			best_area = a
+	return best
+
+
 func rim_y_world() -> float:
 	return global_position.y + _y0
 
@@ -453,12 +482,31 @@ func _inside(x: float, y: float) -> bool:
 	return c >= 0 and c < _col_top.size() and r >= _col_top[c] and r < _col_bottom[c]
 
 
+## Where liquid poured at `x_world` lands (world y): the surface with its
+## waves, or the top of a head.
 func surface_y_world_at(x_world: float) -> float:
+	if foam != null and foam.volume >= 0.5:
+		return global_position.y + foam_level()
 	return global_position.y + _surface_local(_col(x_world))
 
 
+## Local y of the calm top of the head (the liquid's level without one).
+func foam_level() -> float:
+	if foam == null:
+		return surface_level(volume)
+	return surface_level(volume + foam.volume)
+
+
+## The liquid once the head has drained to dry foam: where the beer is
+## heading if nothing more is poured (volume without a head).
+func settled_volume() -> float:
+	if foam == null:
+		return volume
+	return volume + maxf(foam.beer - foam.volume * def.foam_dry_share, 0.0)
+
+
 func receive(x_world: float, vol: float, speed: float) -> void:
-	volume += vol
+	volume += foam.land(vol) if foam != null else vol
 	_overflow()
 	if ice != null:
 		ice.push(x_world - global_position.x, vol * speed * 0.004)
@@ -479,9 +527,12 @@ func receive(x_world: float, vol: float, speed: float) -> void:
 			_bubbles.append(Vector3(float(_x0 + bc) + 0.5, y, randf_range(8.0, 22.0)))
 
 
-## Liquid beyond max_liquid() spills over the rim and runs down the outside.
+## Liquid beyond max_liquid() spills over the rim and runs down the outside;
+## a head on top runs over first.
 func _overflow() -> void:
 	var room := max_liquid()
+	if foam != null:
+		spilled += foam.spill(room - volume)
 	if volume > room:
 		spilled += volume - room
 		volume = room
@@ -516,7 +567,11 @@ func _step_garnishes(dt: float) -> void:
 func step(dt: float) -> void:
 	_step_arrival(dt)
 	_step_garnishes(dt)
+	if foam != null:
+		volume += foam.step(dt)
+		_overflow()
 	_level = surface_level(volume)
+	_foam_level = foam_level()
 	_mat.set_shader_parameter("surface_y", _level)
 
 	var vx := (global_position.x - _last_x) / dt
