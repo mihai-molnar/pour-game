@@ -4,11 +4,15 @@ Date: 2026-10-18
 Status: Approved in conversation (2026-10-18: "that's it. feel free to design
 it, plan it, and implement it") — plan `docs/superpowers/plans/2026-10-18-beer.md`;
 implemented 2026-10-18, awaiting playtest. Tuned values (in `drinks/beer.tres`):
-pays 20 / 12 / 6 (spill 12) — enough for target 7; foam wet 0.45 / dry 0.05
-(wetter than "a fifth" so the creep shows), drain 1.5 s, collapse 40 s, shares
-0.02 → 0.6 between 250 and 1 200 px²/s landing; `pour_rate` 2.5 and
-`tilt_response` 3 so a short release thins the flow (target 5); ease return
-18°/s within 12°. See `CLAUDE.md`'s tuning baseline for the sweep numbers.
+pays 25 / 15 / 8 (spill 15) — raised from 20 / 12 / 6 for target 7 once the
+gentler release made a beer take longer; foam wet 0.45 / dry 0.05 (wetter than
+"a fifth" so the creep shows), drain 2 s, collapse 40 s, shares 0.02 → 0.5
+between 250 and 1 200 px²/s landing; `pour_rate` 2.5 and `tilt_response` 3,
+and the ease return (18°/s within 12°) builds up over 1 s after letting go, so
+a short release thins the flow (target 5: 0.3 s thins it, it stops after about
+0.7 s rather than 1.2 s); the creep is about 2 rows after the glass stands up,
+one of them in the first 2 s (target 4 asked for 2 in 2 s). See `CLAUDE.md`'s
+tuning baseline for the sweep numbers.
 
 ## Overview
 

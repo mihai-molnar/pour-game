@@ -105,6 +105,10 @@ enum BottleLook { WINE, BEER }
 ## feathers the pour. A refilling pourer still swings back with return_force.
 @export var ease_return_speed_deg := 0.0
 @export var ease_return_deg := 12.0
+## How long (s) after DOWN is let go the ease-out return takes to build up to
+## that speed: it starts back gently, so a short release mostly just thins
+## the flow and a long one brings it home.
+@export var ease_return_ramp := 0.0
 @export_range(30.0, 175.0) var max_tilt_deg := 140.0
 ## Fraction of speed kept when it clunks back onto the table.
 @export var rest_bounce := 0.2

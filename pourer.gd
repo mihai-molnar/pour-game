@@ -60,6 +60,7 @@ var refilling := false
 var corked := false
 
 var _refill_t := -1.0  # < 0 while still swinging back upright
+var _let_go := 0.0  # seconds since DOWN was let go (the ease-out return builds up over them)
 var _refill_from := 0.0
 var _surf_angle := 0.0
 var _surf_point := Vector2.ZERO
@@ -111,6 +112,7 @@ func setup(d: DrinkDef) -> void:
 func reset(fill := 1.0) -> void:
 	tilt = 0.0
 	tilt_vel = 0.0
+	_let_go = 0.0
 	slosh = 0.0
 	slosh_vel = 0.0
 	volume = full_volume * fill
@@ -190,12 +192,15 @@ func step(dt: float, hold: bool) -> float:
 	var prev_vel := tilt_vel
 	var acc: float
 	var easing := not hold and not refilling and def.ease_return_speed_deg > 0.0
+	_let_go = 0.0 if hold else _let_go + dt
 	if hold:
 		var speed := def.pour_tilt_speed_deg if excess > 0.0 else def.tilt_speed_deg
 		acc = (deg_to_rad(speed * GameState.stats.pour_speed_mult) - tilt_vel) * def.tilt_response
 	elif easing:
-		# Drift back at a speed that fades within ease_return_deg of rest (never below a fifth of it).
-		var want := -deg_to_rad(def.ease_return_speed_deg) * clampf(tilt / deg_to_rad(def.ease_return_deg), 0.2, 1.0)
+		# Drift back at a speed that builds up over ease_return_ramp and fades
+		# within ease_return_deg of rest (never below a fifth of it).
+		var ramp := clampf(_let_go / def.ease_return_ramp, 0.0, 1.0) if def.ease_return_ramp > 0.0 else 1.0
+		var want := -deg_to_rad(def.ease_return_speed_deg) * ramp * clampf(tilt / deg_to_rad(def.ease_return_deg), 0.2, 1.0)
 		acc = (want - tilt_vel) * def.tilt_response
 	else:
 		acc = -def.return_force - def.return_damp * tilt_vel

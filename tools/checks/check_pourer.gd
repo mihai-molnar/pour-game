@@ -63,6 +63,8 @@ func run() -> void:
 	_check_wine(pourer, glass, wine)
 	_check_drawable_liquid(pourer, water, wine)
 	_check_beer_return(pourer)
+	for gap: float in [0.3, 0.6, 1.5]:
+		_check_beer_feathering(main, gap)
 	for d: DrinkDef in [water, wine]:
 		_refill_progress_rises_to_one(pourer, d)
 	var c := Pourer.rest_center(water, Vector2(270, 175))
@@ -236,6 +238,36 @@ func _check_beer_return(pourer: Pourer) -> void:
 	var cap := pourer.cap_rect()
 	expect(cap.size.x >= m.y + 2.0 and cap.size.y <= 4.5, "the crown cap is a little wider than the mouth and short (%s)" % cap)
 	expect(absf(cap.get_center().x - (m.x + m.y * 0.5)) < 0.01, "...centred on the mouth")
+
+
+## Feathering beer: mid-pour, letting DOWN go for a moment thins the flow
+## (0.3 s), it is still pouring after 0.6 s, and about 1.2 s stops it.
+func _check_beer_feathering(main: Main, gap: float) -> void:
+	var beer: DrinkDef = GameState.BEER
+	main.glass.setup(beer)
+	main.glass.place(GLASS_POS)
+	main.pourer.setup(beer)
+	main.pourer.place(GLASS_POS + beer.pourer_offset)
+	main.stream.clear()
+	var t := 0.0
+	while main.glass.volume + main.glass.foam.beer < main.glass.target * 0.4 and t < 10.0:
+		main._step_sim(DT, Autopilot.feather(main.pourer))
+		t += DT
+	while main.pourer.flow < 500.0 and t < 12.0:
+		main._step_sim(DT, true)
+		t += DT
+	var start: float = main.pourer.flow
+	var g := 0.0
+	while g < gap - 1e-6:
+		main._step_sim(DT, false)
+		g += DT
+	var flow: float = main.pourer.flow
+	if gap < 0.5:
+		expect(flow > start * 0.25, "beer: letting go for %.1f s thins the flow but keeps it going (%.0f -> %.0f px²/s)" % [gap, start, flow])
+	elif gap < 1.0:
+		expect(flow > 0.0, "beer: still pouring %.1f s after letting go (%.0f -> %.0f px²/s)" % [gap, start, flow])
+	else:
+		eq(flow, 0.0, "beer: %.1f s after letting go it has stopped" % gap)
 
 
 ## refill_progress(): 0 while swinging back upright, never falling, under 1

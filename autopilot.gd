@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Release DOWN when this share of the target is in the glass or the air, per
 ## drink id — the lower the line, the bigger the overshoot's share of the target.
-var release_at := {&"water": 0.94, &"wine": 0.86, &"beer": 1.0}
+var release_at := {&"water": 0.94, &"wine": 0.86, &"beer": 1.02}
 var _released := false
 
 ## The flow (px²/s) it feathers a beer pour at.
@@ -21,7 +21,7 @@ const BEER_FLOW := 700.0
 const BEER_SETTLE := 40.0
 ## About this share of what is over the bottle's lip still pours out once DOWN
 ## is let go (the rest runs back as the bottle eases back).
-const LIP_SHARE := 0.5
+const LIP_SHARE := 1.0
 
 
 ## What to buy, in order, whenever it can be afforded.
