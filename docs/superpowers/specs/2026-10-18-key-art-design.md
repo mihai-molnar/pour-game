@@ -1,7 +1,7 @@
 # Pour Game — Keyboard Keys Instead of the Hint Pill
 
 Date: 2026-10-18
-Status: Draft
+Status: Approved (2026-10-18: "go"); implemented 2026-10-18, awaiting playtest — plan `docs/superpowers/plans/2026-10-18-key-art.md`
 
 ## Overview
 
