@@ -22,8 +22,8 @@ const TAB_SIZE := Vector2(30, 74)
 const TAB_TOP := 44.0
 const TAB_GAP := 8.0
 ## Blacked-out lines (things to unlock later): per drink on UPGRADES, and on DRINKS.
-const UPGRADE_TEASERS := {&"water": 2, &"wine": 3}
-const DRINK_TEASERS := 5
+const UPGRADE_TEASERS := {&"water": 2, &"wine": 3, &"beer": 2}
+const DRINK_TEASERS := 4
 ## How long a page takes to turn.
 const TURN_TIME := 0.35
 
@@ -247,6 +247,8 @@ func _build_page(t: Tab) -> MenuPage:
 	match t:
 		Tab.UPGRADES:
 			for d: DrinkDef in GameState.DRINKS:
+				if not GameState.is_unlocked(d):
+					continue  # its section would give away the blacked-out drink
 				var rows: Array = []
 				for g in d.garnishes:
 					var line := _line(g, g.display_name, "%s · %s to add" % [g.description, OS.get_keycode_string(g.key).to_upper()], _garnish_picture(g))
@@ -259,7 +261,9 @@ func _build_page(t: Tab) -> MenuPage:
 		Tab.DRINKS:
 			var rows: Array = []
 			for d: DrinkDef in GameState.DRINKS:
-				if d.price > 0:
+				if d.price > 0 and not GameState.is_unlocked(d):
+					rows.append(null)  # not on sale yet: blacked out
+				elif d.price > 0:
 					var line := _line(d, d.display_name, "Pays %d / %d / %d" % [d.perfect_coins, d.good_coins, d.ok_coins],
 						func(ci: CanvasItem) -> void: MenuArt.draw_bottle(ci, d, Rect2(-7, -13, 14, 26)))
 					line.show_price(d.price, state_of(d))

@@ -10,6 +10,10 @@ extends Resource
 ## IN_PLACE: the pourer fills up where it stands (a pitcher). NEW_BOTTLE: the
 ## empty one is replaced by a new, corked one that gets uncorked.
 enum RefillStyle { IN_PLACE, NEW_BOTTLE }
+## How a bottle looks: its label, what is round its neck and how it is closed.
+## WINE: a grape label, a foil capsule, a cork. BEER: a red-banded label with
+## an ear of barley, a neck label, a crown cap.
+enum BottleLook { WINE, BEER }
 
 @export var id: StringName
 @export var display_name := ""
@@ -21,6 +25,9 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var liquid_absorb := Vector3(0.010, 0.004, 0.002)
 ## How much liquid_color the liquid gives off by itself (so clear water still reads blue).
 @export_range(0.0, 1.0) var liquid_scatter := 0.35
+## Bubbles per second rising from the glass's floor while it holds the drink
+## (beer's fizz; 0 = none). Visual only.
+@export var fizz := 0.0
 
 @export_group("Glass")
 @export var glass_interior := PackedVector2Array()
@@ -29,6 +36,11 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_range(0.1, 1.0) var fill_fraction := 0.9
 ## Corner rounding (px) for drawing the glass smooth; the physics keeps the sharp shapes.
 @export var glass_corner_radius := 2.0
+## The glass is held tipped toward the pourer while pouring, the way a barman
+## pours beer: this far (°) when the pour starts, straightening to
+## glass_line_tilt_deg as the beer reaches the line. 0 = it stays upright.
+@export var glass_pour_tilt_deg := 0.0
+@export var glass_line_tilt_deg := 0.0
 
 @export_group("Payout")
 ## Coins per scoring step, before the streak multiplier.
@@ -41,6 +53,8 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_group("Shop")
 ## Coins it costs in the shop; 0 = owned from the start.
 @export var price := 0
+## On sale in a shop opened once this many rounds have been played (0 = from the start).
+@export var unlock_round := 0
 ## What can be added to its glass while serving it (each bought once in the shop).
 @export var garnishes: Array[GarnishDef] = []
 
@@ -68,6 +82,11 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_range(0.0, 90.0) var pourer_rest_deg := 0.0
 ## How it comes back full once it runs dry.
 @export var refill_style := RefillStyle.IN_PLACE
+## The bottle's label, neck and closure (bottles only).
+@export var bottle_look := BottleLook.WINE
+## Every new glass comes with a new, full pourer, whatever was left in the
+## last one (beer: a bottle per glass).
+@export var bottle_per_glass := false
 
 @export_group("Tilt")
 ## Tilt speed (°/s) while DOWN is held and the liquid hasn't reached the lip yet.
@@ -80,6 +99,16 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var return_force := 3.0
 ## Velocity damping while returning (1/s); caps the return speed at return_force / return_damp.
 @export var return_damp := 2.0
+## > 0: an ease-out return instead (beer): once DOWN is let go it eases out of
+## its forward tip and drifts back at up to this speed (°/s), slowing within
+## ease_return_deg of rest and settling there without a clunk, so tapping DOWN
+## feathers the pour. A refilling pourer still swings back with return_force.
+@export var ease_return_speed_deg := 0.0
+@export var ease_return_deg := 12.0
+## How long (s) after DOWN is let go the ease-out return takes to build up to
+## that speed: it starts back gently, so a short release mostly just thins
+## the flow and a long one brings it home.
+@export var ease_return_ramp := 0.0
 @export_range(30.0, 175.0) var max_tilt_deg := 140.0
 ## Fraction of speed kept when it clunks back onto the table.
 @export var rest_bounce := 0.2
@@ -93,9 +122,29 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 ## Exit speed grows with sqrt(excess), like a weir.
 @export var stream_speed_k := 5.0
 
+@export_group("Foam")
+## Share of landing beer that turns into foam at a trickle (landing at
+## foam_rate_slow px²/s or less) and at full speed (foam_rate_fast or more),
+## linear between. 0 = no head at all (water, wine).
+@export var foam_share_slow := 0.0
+@export var foam_share_fast := 0.0
+@export var foam_rate_slow := 150.0
+@export var foam_rate_fast := 900.0
+## Beer per px² of fresh (wet) foam and of drained (dry) foam.
+@export var foam_wet_share := 0.2
+@export var foam_dry_share := 0.05
+## Time constants (s): wet foam draining toward dry; the head collapsing.
+@export var foam_drain_time := 1.2
+@export var foam_collapse_time := 40.0
+
 @export_group("Slosh")
 @export var slosh_spring := 60.0
 @export var slosh_damp := 4.0
 ## How strongly tilt acceleration sloshes the surface (braking surges liquid toward the spout).
 @export var slosh_gain := 0.04
 @export var slosh_max := 0.25
+
+
+## True if pouring it makes a head (beer).
+func has_foam() -> bool:
+	return foam_share_fast > 0.0

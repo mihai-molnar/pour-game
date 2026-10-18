@@ -105,11 +105,17 @@ func step(dt: float, glass: Glass) -> void:
 
 	var rim := glass.rim_y_world()
 	var opening := glass.opening_world()
+	var tipped := glass.tilt != 0.0
 	var alive: Array[Parcel] = []
 	for p in _parcels:
+		var prev := p.pos
 		var prev_y := p.pos.y
 		p.vel.y += gravity * dt
 		p.pos += p.vel * dt
+		if tipped:
+			if _step_tipped(p, prev, glass):
+				alive.append(p)
+			continue
 		if p.state == 0 and prev_y < rim and p.pos.y >= rim:
 			p.state = 1 if p.pos.x > opening.x and p.pos.x < opening.y else 2
 		if p.state == 1:
@@ -141,6 +147,31 @@ func step(dt: float, glass: Glass) -> void:
 			_droplets[i] = d
 	_tick += 1
 	queue_redraw()
+
+
+## A parcel's fate in a tipped glass (it already moved this tick from
+## `prev`): in through the tipped opening, down the walls, onto the surface or
+## the head; or past the glass onto the counter. False once it has landed.
+func _step_tipped(p: Parcel, prev: Vector2, glass: Glass) -> bool:
+	if p.state == 0:
+		p.state = glass.entry(prev, p.pos)
+	if p.state == 1:
+		p.pos = glass.keep_inside(p.pos)
+		var q := glass.to_glass(p.pos)
+		var surface := glass.surface_local_at(q.x)
+		if q.y >= surface:
+			var at := glass.from_glass(Vector2(q.x, surface))
+			glass.receive_local(q.x, p.vol, p.vel.length())
+			_splash(at, p)
+			_landing = at
+			_landing_parcel_tick = p.tick
+			_landing_tick = _tick
+			return false
+	elif p.pos.y >= table_y:
+		spilled += p.vol
+		_splash(Vector2(p.pos.x, table_y), p)
+		return false
+	return true
 
 
 func _splash(at: Vector2, p: Parcel) -> void:

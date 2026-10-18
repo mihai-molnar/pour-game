@@ -1,5 +1,6 @@
 extends CheckBase
-## Simulates pours and fails if any bubble is ever outside the glass interior.
+## Simulates pours (beer's in its tipped glass) and fails if any bubble is
+## ever outside the glass interior.
 
 
 func run() -> void:
@@ -12,7 +13,7 @@ func run() -> void:
 	var bad := 0
 	var worst := ""
 	seed(2)  # bubbles are visual randomness; a fixed seed makes a failure repeatable
-	for d: DrinkDef in [GameState.WATER, GameState.WINE]:
+	for d: DrinkDef in [GameState.WATER, GameState.WINE, GameState.BEER]:
 		glass.setup(d)
 		glass.place(Main.GLASS_POS)
 		main.pourer.setup(d)

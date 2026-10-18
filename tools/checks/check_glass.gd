@@ -51,6 +51,8 @@ func run() -> void:
 	_check_lime(glass, water)
 	_check_ice_physics(glass, water)
 	_check_wine(glass, wine)
+	_check_foam(glass, GameState.BEER)
+	_check_tilt(glass, GameState.BEER)
 	glass.setup(water)
 	expect(glass.capacity == 2346.0 and is_equal_approx(glass.target, want), "back to water: same capacity and target")
 	expect(glass.opening_world() == Vector2(237, 275), "back to water: same opening (got %s)" % glass.opening_world())
@@ -86,6 +88,103 @@ func _check_wine(glass: Glass, wine: DrinkDef) -> void:
 	var mat := (glass.get_node("Liquid") as CanvasItem).material as ShaderMaterial
 	eq([mat.get_shader_parameter("tint"), mat.get_shader_parameter("absorb"), mat.get_shader_parameter("scatter")],
 		[wine.liquid_color, wine.liquid_absorb, wine.liquid_scatter], "wine: the liquid shader gets wine's look")
+
+
+## Beer's head: a fast pour builds it on top of the beer, every px² of beer
+## is accounted for, the stream lands on it, it is drawn as big as it is, the
+## beer creeps up as it drains, and running it over the rim is a spill.
+func _check_foam(glass: Glass, beer: DrinkDef) -> void:
+	glass.setup(beer)
+	glass.place(HOME)
+	expect(glass.foam != null and glass.foam.volume == 0.0, "a beer glass starts without a head")
+	var landed := 0.0
+	for i in 120:  # 2 s at about 600 px²/s
+		glass.receive(HOME.x, 10.0, 200.0)
+		landed += 10.0
+		glass.step(DT)
+	expect(glass.foam.volume > 300.0, "a fast pour builds a head (%.0f px²)" % glass.foam.volume)
+	near(glass.volume + glass.foam.beer + glass.spilled, landed, "beer: landed = liquid + head's beer + spilled", 0.05)
+	expect(glass.foam_level() < glass.surface_level(glass.volume) - 5.0, "the head sits on top of the beer")
+	near(glass.surface_y_world_at(HOME.x) - HOME.y, glass.foam_level(), "the stream lands on the head", 1.5)
+	var poly := glass.foam_polygon()
+	expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "the head, lumpy top and all, is drawable")
+	near(Pourer.poly_area(poly) / glass.foam.volume, 1.0, "the drawn head's area matches its volume", 0.08)
+	glass.tilt = deg_to_rad(30.0)
+	glass.step(DT)
+	poly = glass.foam_polygon()
+	expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "a tipped head is drawable")
+	near(Pourer.poly_area(poly) / glass.foam.volume, 1.0, "...and as big as it is", 0.08)
+	glass.tilt = 0.0
+	glass.step(DT)
+	var before := glass.volume
+	var settled := glass.settled_volume()
+	_steps(glass, 4.0)
+	expect(glass.volume > before and absf(glass.volume - settled) < 20.0,
+		"the beer creeps up as the head drains (%.0f -> %.0f, predicted %.0f)" % [before, glass.volume, settled])
+	glass.receive(HOME.x, glass.capacity, 0.0)  # far too much: the head runs over first
+	expect(glass.spilled > 0.5 and glass.volume + glass.foam.volume <= glass.max_liquid() + 0.01, "an overflowing head is a spill")
+	glass.reset()
+	expect(glass.foam.volume == 0.0 and glass.volume == 0.0, "reset clears the head")
+	glass.volume = glass.target
+	seed(4)
+	_steps(glass, 2.0)
+	expect(glass._bubbles.size() >= 10, "standing beer fizzes (%d bubbles)" % glass._bubbles.size())
+	glass.setup(GameState.WATER)
+	expect(glass.foam == null, "water has no head")
+	glass.volume = glass.target
+	_steps(glass, 2.0)
+	eq(glass._bubbles.size(), 0, "standing water doesn't fizz")
+
+
+## Beer's glass tips about its mouth while pouring: upright it is exactly as
+## before, a hair of tilt doesn't jump the level, tipped it holds less, the
+## surface stays level in the world and the drawn beer matches its volume; it
+## tips in, straightens as it fills, waits out a short gap, comes back exactly
+## upright. Water's glass never tips.
+func _check_tilt(glass: Glass, beer: DrinkDef) -> void:
+	glass.setup(beer)
+	glass.place(HOME)
+	for v in [100.0, 800.0, glass.target]:
+		eq(glass.surface_level(v), glass.level_for(v), "upright: the level is level_for (%.0f px²)" % v)
+	glass.tilt = 1e-4
+	for v in [100.0, 800.0, glass.target]:
+		near(glass.surface_level(v), glass.level_for(v), "a hair of tilt doesn't jump the level (%.0f px²)" % v, 0.5)
+	glass.tilt = deg_to_rad(30.0)
+	expect(glass.max_liquid() < glass.capacity * 0.97 and glass.max_liquid() > glass.capacity * 0.8,
+		"tipped, it holds less (%.0f of %.0f)" % [glass.max_liquid(), glass.capacity])
+	var lvl := glass.surface_level(glass.target)
+	var ys: Array[float] = []
+	for x in [-10.0, 0.0, 10.0]:
+		ys.append((glass.frame() * Vector2(x, glass.calm_y(x, lvl))).y)
+	expect(absf(ys[0] - ys[2]) < 0.01 and absf(ys[1] - ys[2]) < 0.01, "the tipped surface is level in the world %s" % [ys])
+	expect((glass.frame() * glass.pivot()).distance_to(glass.pivot()) < 1e-4, "it tips about its mouth")
+	glass.volume = glass.target
+	glass.step(DT)
+	near(Pourer.poly_area(glass.liquid_polygon()) / glass.target, 1.0, "tipped: the drawn beer matches its volume", 0.04)
+	glass.reset()
+	glass.tilt = 0.0
+	for i in 24:
+		glass.step_tilt(DT, true)
+	expect(glass.tilt >= deg_to_rad(beer.glass_pour_tilt_deg) * 0.9, "an empty glass tips to ~35° in 0.4 s (%.1f°)" % rad_to_deg(glass.tilt))
+	glass.volume = glass.target
+	for i in 60:
+		glass.step_tilt(DT, true)
+	near(rad_to_deg(glass.tilt), beer.glass_line_tilt_deg, "at the line it is held at ~15°", 0.5)
+	for i in 14:
+		glass.step_tilt(DT, false)
+	expect(not glass.is_upright(), "it stays tipped through a short gap")
+	var t := 0
+	while not glass.is_upright() and t < 120:
+		glass.step_tilt(DT, false)
+		t += 1
+	expect(glass.is_upright() and t * DT < 0.75, "then comes back exactly upright (%.2f s)" % (t * DT))
+	glass.tilt = 0.4
+	glass.place(HOME)
+	expect(glass.is_upright(), "place() stands it upright")
+	glass.setup(GameState.WATER)
+	for i in 60:
+		glass.step_tilt(DT, true)
+	expect(glass.is_upright(), "water's glass never tips")
 
 
 ## The target marker runs from the bracket to the glass's left wall, never across the glass.

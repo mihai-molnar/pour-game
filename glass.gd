@@ -14,6 +14,14 @@ extends Node2D
 ## is served: ice falls in and takes up room (surface_level, max_liquid — what
 ## is drawn and scored) and, once landed, bounces, floats and drifts in a small
 ## visual-only simulation (IcePhysics); a lime wedge drops onto the left rim.
+## A beer glass holds a head (Foam) on top of the beer: it takes up room (a
+## head over the rim is a spill) and drains beer back into the glass. It is
+## also held tipped toward the pourer while pouring (step_tilt): tipping is
+## gameplay — the liquid's surface stays level in the world, so in the glass's
+## own frame it is a sloped line (calm_y) whose height for a volume is solved
+## over the pixel columns, and a tipped glass holds less — but the glass is
+## always upright again before it is served. The tilt turns the draw layers
+## about the mouth (frame()); the node never rotates.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -47,6 +55,12 @@ const LIME_ANGLE := -0.7
 const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4)]
 ## The fastest a cube enters the glass (px/s): the scripted fall ends faster.
 const ICE_ENTRY_SPEED := 220.0
+## Tipping while pouring: time constants (s) tipping in and coming back, how
+## long a gap in the pour it rides out (s), and the angle (rad) it snaps upright from.
+const TILT_IN := 0.1
+const TILT_OUT := 0.12
+const TILT_GRACE := 0.25
+const TILT_SNAP := 0.002
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -87,6 +101,18 @@ var ice: IcePhysics
 var _garnish_t: Array[float] = []  # seconds since each garnish was added
 var _floor_y := 0.0  # local y of the interior's floor
 var _clock := 0.0  # visual time, for the cubes' drift
+## The head on a beer (null for drinks without one).
+var foam: Foam
+var _foam_level := 0.0  # local y of the calm head's top
+## How far it is tipped toward the pourer (rad; + = the top leans right,
+## clockwise on screen). Gameplay: levels, room and landing use it.
+var tilt := 0.0
+var _tilt_idle := TILT_GRACE  # seconds since the pour last wanted it tipped
+var _lean := 0.0  # the arrival's lean (rad)
+var _mouth := Vector2.ZERO  # local: the middle of the opening, what it tips about
+var _foam_seed := 0.0  # the head's lumpy top and bubbles (visual)
+var _fizz_x := PackedFloat32Array()  # where beer's fizz rises from the floor (local x; visual)
+var _fizz_due := 0.0
 
 @onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
@@ -106,6 +132,9 @@ func setup(d: DrinkDef) -> void:
 	interior = d.glass_interior
 	outer = d.glass_outer
 	_rasterize()
+	_mouth = Vector2((_row_left[0] + _row_right[0] + 1) * 0.5, _y0)
+	tilt = 0.0
+	_tilt_idle = TILT_GRACE
 	_drawn_outer = VesselArt.rounded(outer, d.glass_corner_radius)
 	_drawn_interior = VesselArt.rounded(interior, d.glass_corner_radius, true)
 	_walls = VesselArt.walls(_drawn_outer, _drawn_interior)
@@ -136,6 +165,17 @@ func reset() -> void:
 	garnishes.clear()
 	_garnish_t.clear()
 	ice = null
+	foam = Foam.new(def) if def != null and def.has_foam() else null
+	_foam_level = _level
+	_foam_seed = randf() * TAU
+	_fizz_x.clear()
+	_fizz_due = 0.0
+	if def != null and def.fizz > 0.0:
+		var r := _row_area.size() - 1
+		while r > 0 and _row_area[r] == 0:
+			r -= 1
+		for i in randi_range(3, 5):
+			_fizz_x.append(randf_range(_row_left[r] + 1.0, _row_right[r]))
 
 
 ## Adds a garnish: ice starts falling, the lime starts dropping onto the rim.
@@ -182,7 +222,7 @@ func _ice() -> GarnishDef:
 func surface_level(liquid: float) -> float:
 	var ice := _ice()
 	if ice == null:
-		return level_for(liquid)
+		return level_for(liquid) if tilt == 0.0 else _sloped_level(liquid)
 	var cubes_w := ice.cube_count * ice.cube_size
 	var sub := ice.float_share * ice.cube_size
 	var remaining := liquid
@@ -216,7 +256,11 @@ func displaced(liquid: float) -> float:
 func max_liquid() -> float:
 	var ice := _ice()
 	if ice == null:
-		return capacity
+		if tilt == 0.0:
+			return capacity
+		# Tipped: up to the level line through the rim corner that is highest in the world.
+		var k := tan(tilt)
+		return _area_below(_y0 + maxf(k * (_row_left[0] - _mouth.x), k * (_row_right[0] + 1 - _mouth.x)))
 	var cubes_w := ice.cube_count * ice.cube_size
 	var sub := ice.float_share * ice.cube_size
 	var room := 0.0
@@ -228,6 +272,140 @@ func max_liquid() -> float:
 		var split := clampf(sub, d0, d0 + 1.0)
 		room += (split - d0) * maxf(a - cubes_w, 0.5) + (d0 + 1.0 - split) * a
 	return room
+
+
+## Local y of the world-level line at local x whose height at the mouth's x
+## is `level`: flat when upright, sloped while tipped.
+func calm_y(x: float, level: float) -> float:
+	return level - tan(tilt) * (x - _mouth.x)
+
+
+## The area inside the glass under the level line of height `level` (see
+## calm_y): each pixel column's run below the line. At tilt 0 this is what
+## level_for inverts.
+func _area_below(level: float) -> float:
+	return _area_and_width(level).x
+
+
+## (area under the level line of height `level`, how many columns it crosses —
+## the rate the area changes as the line moves).
+func _area_and_width(level: float) -> Vector2:
+	var k := tan(tilt)
+	var total := 0.0
+	var width := 0.0
+	var y := level - k * (_x0 + 0.5 - _mouth.x)
+	for c in _col_top.size():
+		var top := float(_col_top[c])
+		var bottom := float(_col_bottom[c])
+		if bottom > top:
+			if y <= top:
+				total += bottom - top
+			elif y < bottom:
+				total += bottom - y
+				width += 1.0
+		y -= k
+	return Vector2(total, width)
+
+
+## The height (at the mouth's x) of the tipped glass's level surface holding
+## `vol`: Newton steps on the (piecewise linear) area, kept inside a shrinking
+## bracket, starting from the upright level.
+func _sloped_level(vol: float) -> float:
+	var lo := float(_y0) - 80.0  # the area under a line this high is >= vol
+	var hi := _floor_y + 80.0  # ...and under this one, 0
+	var level := level_for(vol)
+	for i in 40:
+		var aw := _area_and_width(level)
+		var diff := aw.x - vol
+		if absf(diff) < 1e-4:
+			break
+		if diff > 0.0:
+			lo = level
+		else:
+			hi = level
+		var next := level + diff / aw.y if aw.y > 0.0 else (lo + hi) * 0.5
+		if next <= lo or next >= hi:
+			next = (lo + hi) * 0.5
+		level = next
+	return level
+
+
+## Tips the glass toward the pourer while `pouring` (DOWN held, beer flowing
+## or in the air), riding out gaps shorter than TILT_GRACE, and brings it back
+## exactly upright after. It straightens as the beer nears the line. Nothing
+## for a drink that isn't poured tipped, or while it slides in.
+func step_tilt(dt: float, pouring: bool) -> void:
+	if def == null or def.glass_pour_tilt_deg <= 0.0:
+		return
+	if pouring and visible and not is_arriving():
+		_tilt_idle = 0.0
+	else:
+		_tilt_idle += dt
+	var want := 0.0
+	if _tilt_idle < TILT_GRACE:
+		var held := volume + (foam.beer if foam != null else 0.0)
+		want = deg_to_rad(lerpf(def.glass_pour_tilt_deg, def.glass_line_tilt_deg, clampf(held / target, 0.0, 1.0)))
+	tilt += (want - tilt) * (1.0 - exp(-dt / (TILT_IN if want > tilt else TILT_OUT)))
+	if want == 0.0 and absf(tilt) < TILT_SNAP:
+		tilt = 0.0
+	_apply_frame()
+
+
+func is_upright() -> bool:
+	return tilt == 0.0
+
+
+## The middle of the opening (local): what the glass tips about.
+func pivot() -> Vector2:
+	return _mouth
+
+
+## Local -> this node's space: the tilt about the mouth (identity when upright).
+func frame() -> Transform2D:
+	return Transform2D(tilt, _mouth - _mouth.rotated(tilt))
+
+
+## Where liquid moving from `prev_world` to `world` (and not in yet) is
+## relative to the tipped opening: 0 still above it, 1 it crossed between the
+## lips (it's in), 2 it crossed outside them (missed). The rim turns as the
+## glass straightens, so it may have passed the liquid rather than the other
+## way round: then it is judged where it is now.
+func entry(prev_world: Vector2, world: Vector2) -> int:
+	var b := to_glass(world)
+	if b.y < _y0:
+		return 0
+	var a := to_glass(prev_world)
+	var x := lerpf(a.x, b.x, (_y0 - a.y) / (b.y - a.y)) if a.y < _y0 else b.x
+	return 1 if x > _row_left[0] and x < _row_right[0] + 1 else 2
+
+
+## `world` kept inside the tipped glass's walls at its height (liquid runs
+## down the side instead of passing through it).
+func keep_inside(world: Vector2) -> Vector2:
+	var q := to_glass(world)
+	var r := clampi(floori(q.y) - _y0, 0, _row_area.size() - 1)
+	if _row_area[r] == 0:
+		return world
+	var x := clampf(q.x, _row_left[r] + 0.5, _row_right[r] + 0.5)
+	return world if x == q.x else from_glass(Vector2(x, q.y))
+
+
+## Local y where liquid falling at local x lands: the head's top, or the
+## liquid's wavy surface.
+func surface_local_at(x: float) -> float:
+	var c := clampi(floori(x) - _x0, 0, _wave_h.size() - 1)
+	if foam != null and foam.volume >= 0.5:
+		return minf(calm_y(x, _foam_level), float(_col_bottom[c]))
+	return _surface_local(c)
+
+
+## A world point in the glass's own (tipped) frame, and back.
+func to_glass(world: Vector2) -> Vector2:
+	return frame().affine_inverse() * (world - global_position)
+
+
+func from_glass(local: Vector2) -> Vector2:
+	return global_position + frame() * local
 
 
 ## Sets the glass up for `d` (empty), puts it off-screen left and starts
@@ -252,6 +430,8 @@ func place(at: Vector2) -> void:
 	_last_x = at.x
 	_last_vx = 0.0
 	_arrive_t = -1.0
+	tilt = 0.0
+	_tilt_idle = TILT_GRACE
 	_apply_lean(0.0)
 
 
@@ -259,6 +439,8 @@ func place(at: Vector2) -> void:
 func vanish() -> void:
 	visible = false
 	_arrive_t = -1.0
+	tilt = 0.0
+	_tilt_idle = TILT_GRACE
 	_apply_lean(0.0)
 
 
@@ -290,9 +472,15 @@ func _step_arrival(dt: float) -> void:
 
 ## Turns the drawing by `angle` about the arrival pivot (the node stays put).
 func _apply_lean(angle: float) -> void:
+	_lean = angle
+	_apply_frame()
+
+
+## The draw layers follow the arrival's lean and the tilt about the mouth.
+func _apply_frame() -> void:
+	var t := Transform2D(_lean, _pivot - _pivot.rotated(_lean)) * frame()
 	for layer: Node2D in [_back, _liquid, _front]:
-		layer.rotation = angle
-		layer.position = _pivot - _pivot.rotated(angle)
+		layer.transform = t
 
 
 func _rasterize() -> void:
@@ -396,12 +584,40 @@ func liquid_polygon() -> PackedVector2Array:
 		return PackedVector2Array()
 	var n := _col_top.size()
 	var bottom := float(_y0 + _row_area.size()) + 1.0
-	var shape := PackedVector2Array([Vector2(_x0 - 1.0, _level - _wave_h[0])])
+	var shape := PackedVector2Array([Vector2(_x0 - 1.0, minf(calm_y(_x0 - 1.0, _level) - _wave_h[0], bottom))])
 	for c in n:
-		shape.append(Vector2(_x0 + c + 0.5, _level - _wave_h[c]))
-	shape.append(Vector2(_x0 + n + 1.0, _level - _wave_h[n - 1]))
+		shape.append(Vector2(_x0 + c + 0.5, minf(calm_y(_x0 + c + 0.5, _level) - _wave_h[c], bottom)))
+	shape.append(Vector2(_x0 + n + 1.0, minf(calm_y(_x0 + n + 1.0, _level) - _wave_h[n - 1], bottom)))
 	shape.append(Vector2(_x0 + n + 1.0, bottom))
 	shape.append(Vector2(_x0 - 1.0, bottom))
+	var best := PackedVector2Array()
+	var best_area := 0.5
+	for poly in Geometry2D.intersect_polygons(_drawn_interior, shape):
+		var a := Pourer.poly_area(poly)
+		if a >= best_area:
+			best = poly
+			best_area = a
+	return best
+
+
+## The head as drawn (local): from the liquid's wavy surface up to the head's
+## lumpy top, cut to the rounded inside. Empty when there is (next to) none.
+func foam_polygon() -> PackedVector2Array:
+	if foam == null or foam.volume < 0.5:
+		return PackedVector2Array()
+	var n := _col_top.size()
+	var top := _foam_level
+	var shape := PackedVector2Array()
+	var x := float(_x0) - 1.0
+	while x <= _x0 + n + 1.0:  # the lumpy top, left to right
+		shape.append(Vector2(x, calm_y(x, top) - FoamArt.bump(x, _foam_seed)))
+		x += 1.0
+	# ...then back along the beer's wavy surface (never above the lumps).
+	shape.append(Vector2(_x0 + n + 1.0, maxf(calm_y(_x0 + n + 1.0, _level) - _wave_h[n - 1], calm_y(_x0 + n + 1.0, top) + 0.8)))
+	for c in range(n - 1, -1, -1):
+		var cx := _x0 + c + 0.5
+		shape.append(Vector2(cx, maxf(calm_y(cx, _level) - _wave_h[c], calm_y(cx, top) + 0.8)))
+	shape.append(Vector2(_x0 - 1.0, maxf(calm_y(_x0 - 1.0, _level) - _wave_h[0], calm_y(_x0 - 1.0, top) + 0.8)))
 	var best := PackedVector2Array()
 	var best_area := 0.5
 	for poly in Geometry2D.intersect_polygons(_drawn_interior, shape):
@@ -443,7 +659,7 @@ func _col(x_world: float) -> int:
 func _surface_local(c: int) -> float:
 	if volume < 0.5:
 		return float(_col_bottom[c])
-	return minf(_level - _wave_h[c], float(_col_bottom[c]))
+	return minf(calm_y(_x0 + c + 0.5, _level) - _wave_h[c], float(_col_bottom[c]))
 
 
 ## True if the pixel at local (x, y) is inside the glass.
@@ -453,23 +669,47 @@ func _inside(x: float, y: float) -> bool:
 	return c >= 0 and c < _col_top.size() and r >= _col_top[c] and r < _col_bottom[c]
 
 
+## Where liquid poured at `x_world` lands (world y): the surface with its
+## waves, or the top of a head.
 func surface_y_world_at(x_world: float) -> float:
+	if foam != null and foam.volume >= 0.5:
+		return global_position.y + foam_level()
 	return global_position.y + _surface_local(_col(x_world))
 
 
+## Local y of the calm top of the head (the liquid's level without one).
+func foam_level() -> float:
+	if foam == null:
+		return surface_level(volume)
+	return surface_level(volume + foam.volume)
+
+
+## The liquid once the head has drained to dry foam: where the beer is
+## heading if nothing more is poured (volume without a head).
+func settled_volume() -> float:
+	if foam == null:
+		return volume
+	return volume + maxf(foam.beer - foam.volume * def.foam_dry_share, 0.0)
+
+
 func receive(x_world: float, vol: float, speed: float) -> void:
-	volume += vol
+	receive_local(x_world - global_position.x, vol, speed)
+
+
+## Liquid landing at local x (the glass's own frame, tipped or not).
+func receive_local(x: float, vol: float, speed: float) -> void:
+	volume += foam.land(vol) if foam != null else vol
 	_overflow()
 	if ice != null:
-		ice.push(x_world - global_position.x, vol * speed * 0.004)
-	var c := _col(x_world)
+		ice.push(x, vol * speed * 0.004)
+	var c := clampi(floori(x) - _x0, 0, _wave_h.size() - 1)
 	var kick := vol * speed * impact_gain
 	_wave_v[c] -= kick
 	if c > 0:
 		_wave_v[c - 1] -= kick * 0.5
 	if c < _wave_v.size() - 1:
 		_wave_v[c + 1] -= kick * 0.5
-	if randf() < vol * speed * 0.0004 and _bubbles.size() < 40:
+	if randf() < vol * speed * 0.0004 * (3.0 if def.fizz > 0.0 else 1.0) and _bubbles.size() < _bubble_cap():
 		# Spawn under the impact, but never deeper than this column's floor.
 		var bc := clampi(c + randi_range(-2, 2), 0, _col_top.size() - 1)
 		var top := _surface_local(bc) + 2.0
@@ -479,9 +719,20 @@ func receive(x_world: float, vol: float, speed: float) -> void:
 			_bubbles.append(Vector3(float(_x0 + bc) + 0.5, y, randf_range(8.0, 22.0)))
 
 
-## Liquid beyond max_liquid() spills over the rim and runs down the outside.
+## How many bubbles it shows at most: more for a fizzy drink.
+func _bubble_cap() -> int:
+	return 120 if def.fizz > 0.0 else 40
+
+
+## Liquid beyond max_liquid() spills over the rim and runs down the outside;
+## a head on top runs over first (its drips are foam: side ±2).
 func _overflow() -> void:
 	var room := max_liquid()
+	if foam != null:
+		var lost := foam.spill(room - volume)
+		spilled += lost
+		if lost > 0.0 and _drips.size() < 30:
+			_drips.append(Vector3(2.0 if randf() < 0.5 else -2.0, float(_y0), randf_range(20.0, 40.0)))
 	if volume > room:
 		spilled += volume - room
 		volume = room
@@ -516,7 +767,11 @@ func _step_garnishes(dt: float) -> void:
 func step(dt: float) -> void:
 	_step_arrival(dt)
 	_step_garnishes(dt)
+	if foam != null:
+		volume += foam.step(dt)
+		_overflow()
 	_level = surface_level(volume)
+	_foam_level = foam_level()
 	_mat.set_shader_parameter("surface_y", _level)
 
 	var vx := (global_position.x - _last_x) / dt
@@ -542,10 +797,25 @@ func step(dt: float) -> void:
 	if ice != null:
 		ice.step(dt, interior, _surface_at)
 
+	if def.fizz > 0.0 and volume >= 0.5 and not _fizz_x.is_empty():  # beer fizzes all the time
+		_fizz_due += def.fizz * dt
+		while _fizz_due >= 1.0:
+			_fizz_due -= 1.0
+			if _bubbles.size() >= _bubble_cap():
+				break
+			var fx := _fizz_x[randi() % _fizz_x.size()] + randf_range(-0.6, 0.6)
+			var fc := clampi(floori(fx) - _x0, 0, n - 1)
+			var fy := float(_col_bottom[fc]) - randf_range(0.6, 1.6)
+			if fy > _surface_local(fc) + 1.0:
+				_bubbles.append(Vector3(float(_x0 + fc) + 0.5, fy, randf_range(6.0, 14.0)))
+
 	for i in range(_bubbles.size() - 1, -1, -1):
 		var b := _bubbles[i]
 		b.y -= b.z * dt
 		var wobbled := b.x + sin(b.y * 0.7) * 0.15
+		if tilt != 0.0:  # rise toward world-up through the tipped glass
+			b.y += b.z * dt * (1.0 - cos(tilt))
+			wobbled -= b.z * dt * sin(tilt)
 		if _inside(wobbled, b.y):
 			b.x = wobbled
 		var c := clampi(floori(b.x) - _x0, 0, n - 1)
@@ -608,7 +878,7 @@ func _cube_poses(g: GarnishDef) -> Array[Vector3]:
 func _surface_at(x: float) -> float:
 	if volume < 0.5:
 		return INF
-	return _level - _wave_h[clampi(floori(x) - _x0, 0, _wave_h.size() - 1)]
+	return calm_y(x, _level) - _wave_h[clampi(floori(x) - _x0, 0, _wave_h.size() - 1)]
 
 
 ## Where the lime's slit sits on the left rim (local).
@@ -666,6 +936,11 @@ func _draw_front(ci: CanvasItem) -> void:
 	var box := Rect2(_drawn_outer[0], Vector2.ZERO)
 	for p in _drawn_outer:
 		box = box.expand(p)
+	var head := foam_polygon()
+	if not head.is_empty():
+		var top := _foam_level
+		var depth := func(p: Vector2) -> float: return (p.y - calm_y(p.x, top)) / maxf(_level - top, 1.0)
+		FoamArt.draw(ci, head, depth, def.liquid_color, _foam_seed)
 	for wall in _walls:
 		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, VesselArt.clear_glass_walls())
 	for g in garnishes:
@@ -677,10 +952,12 @@ func _draw_front(ci: CanvasItem) -> void:
 	if volume >= 0.5:
 		var surface := PackedVector2Array()
 		for c in _col_top.size():
-			var y := _level - _wave_h[c]
+			var y := calm_y(_x0 + c + 0.5, _level) - _wave_h[c]
 			if y >= _col_top[c] and y < _col_bottom[c]:
 				surface.append(Vector2(_x0 + c + 0.5, y))
-		if surface.size() >= 2:
+		if surface.size() >= 2 and not head.is_empty():  # where the beer meets its head: a thin wet line
+			ci.draw_polyline(surface, Color(def.liquid_highlight, 0.6), 0.45, true)
+		elif surface.size() >= 2:
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.9), 0.45, true)
 	var fizz := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
@@ -706,7 +983,8 @@ func _draw_front(ci: CanvasItem) -> void:
 	# Drips running down the outside after an overflow.
 	for d in _drips:
 		var walls := outer_x_at(d.y)
-		ci.draw_circle(Vector2(walls.y + 0.4 if d.x > 0.0 else walls.x - 0.4, d.y), 0.7, def.liquid_highlight)
+		var color := Palette.FOAM if absf(d.x) > 1.5 else def.liquid_highlight
+		ci.draw_circle(Vector2(walls.y + 0.4 if d.x > 0.0 else walls.x - 0.4, d.y), 0.9 if absf(d.x) > 1.5 else 0.7, color)
 
 	# The lime on the rim; the scoring marks stay on top of it.
 	for i in garnishes.size():

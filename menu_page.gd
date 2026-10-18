@@ -77,7 +77,8 @@ func _label(rect: Rect2, text: String, font: Font, font_size: int, color: Color)
 	return l
 
 
-## Section i starts in column i % 2 and runs on into the other if it overflows.
+## Section i starts in column i % 2 — or in the other one if only that one
+## has room for all of it — and runs on into the other if it overflows.
 func _lay_out(sections: Array) -> void:
 	var y := [BODY_TOP, BODY_TOP]
 	var row_seed := 0
@@ -85,7 +86,10 @@ func _lay_out(sections: Array) -> void:
 		var sec: Dictionary = sections[i]
 		var col := i % 2
 		var need := HEADER_H + MenuLine.SIZE.y
+		var whole: float = HEADER_H + MenuLine.SIZE.y * sec.rows.size()
 		if y[col] + need > BODY_BOTTOM and y[1 - col] + need <= BODY_BOTTOM:
+			col = 1 - col
+		elif y[col] + whole > BODY_BOTTOM and y[1 - col] + whole <= BODY_BOTTOM:
 			col = 1 - col
 		_headers.append([Rect2(COLUMNS[col], y[col], COLUMN_W, HEADER_H), sec.header])
 		y[col] += HEADER_H

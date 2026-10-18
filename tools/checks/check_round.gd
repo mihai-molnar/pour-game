@@ -34,6 +34,11 @@ func run() -> void:
 	_garnish_keys_follow_the_rules()
 	_serve_waits_for_falling_ice_and_pays_more()
 	_iced_round_with_autopilot()
+	_serve_waits_for_an_upright_glass()
+	_last_call_waits_for_an_upright_glass()
+	_beer_brings_a_new_bottle()
+	_beer_round_with_autopilot()
+	_beer_earns_at_least_wine()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -551,3 +556,107 @@ func _iced_round_with_autopilot() -> void:
 		good += 1 if r.band == Scoring.PERFECT or r.band == Scoring.GOOD else 0
 	expect(main.results.size() >= 4 and garnished == main.results.size(), "every autoplayed water glass is iced and limed (%d of %d)" % [garnished, main.results.size()])
 	expect(good * 2 >= main.results.size(), "...and most land GOOD or better (%d of %d)" % [good, main.results.size()])
+
+
+## A beer glass with the target in it, the bottle ready, nothing pouring, then
+## tipped as if the pour had just stopped.
+func _tipped_beer_glass() -> void:
+	_fresh()
+	GameState.owned_drinks.append(GameState.BEER)
+	_run(Main.INTRO_TIME + DT)
+	_serve_with_next(GameState.BEER)  # the next glass is beer
+	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + 0.1)
+	main.glass.receive(Main.GLASS_POS.x, main.glass.target, 0.0)
+	main.glass.tilt = 0.4
+	main.glass._tilt_idle = 0.0
+
+
+func _serve_waits_for_an_upright_glass() -> void:
+	_tipped_beer_glass()
+	var served: int = main.results.size()
+	main.request_serve()
+	main.tick(DT, false)
+	expect(main.results.size() == served and main.is_serve_queued(), "a serve waits while the glass is tipped")
+	var t := DT
+	while main.results.size() == served and t < 2.0:
+		main.tick(DT, false)
+		t += DT
+	expect(main.results.size() == served + 1 and t >= Glass.TILT_GRACE, "...and fires once it is upright (%.2f s)" % t)
+
+
+func _last_call_waits_for_an_upright_glass() -> void:
+	_tipped_beer_glass()
+	main._enter(Main.Phase.LAST_CALL)
+	main._idle = 0.0
+	var served: int = main.results.size()
+	var t := 0.0
+	while main.results.size() == served and t < Main.LAST_CALL_IDLE + 2.0:
+		main.tick(DT, false)
+		t += DT
+	expect(t >= Main.LAST_CALL_IDLE + Glass.TILT_GRACE, "last call's idle starts once the glass is upright (served at %.2f s)" % t)
+	expect(main.results.size() == served + 1 and t < Main.LAST_CALL_IDLE + 1.0, "...then it auto-serves (%.2f s)" % t)
+
+
+## Every beer glass comes with its own new, full, capped bottle, whatever was
+## left in the last one; wine keeps its bottle across glasses.
+func _beer_brings_a_new_bottle() -> void:
+	_fresh()
+	GameState.owned_drinks.append(GameState.BEER)
+	GameState.menu.append(GameState.BEER)
+	GameState.new_drinks.append(GameState.BEER)  # start_round() opens with it
+	main.start_round()
+	_run(Main.INTRO_TIME + DT)
+	expect(main.drink == GameState.BEER, "the round opens with beer")
+	var pops := [0]
+	var count := func(_a: Vector2, _v: Vector2, _c: Color) -> void: pops[0] += 1
+	main.pourer.popped.connect(count)
+	main.pourer.volume = main.pourer.full_volume * 0.4  # what was left of the last bottle
+	_serve_with_next(GameState.BEER)
+	expect(main.pourer.is_arriving() and main.pourer.corked, "the next beer brings a new, capped bottle")
+	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + DT)
+	expect(pops[0] == 1 and main.pourer.volume == main.pourer.full_volume, "...full, its cap popped (%d pops)" % pops[0])
+	main.pourer.popped.disconnect(count)
+	_serve_with_next(GameState.WINE)
+	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + DT)
+	_serve_with_next(GameState.WINE)
+	expect(not main.pourer.is_arriving(), "wine still keeps its bottle across glasses")
+
+
+## A round of only `d`, played by the autopilot: its results, coins and how
+## many bottles were opened.
+func _round_of(d: DrinkDef, seed_value: int) -> Dictionary:
+	GameState.reset_session(seed_value)
+	if not GameState.owned_drinks.has(d):
+		GameState.owned_drinks.append(d)
+	GameState.menu.assign([d])
+	main.start_round()
+	var pilot := Autopilot.new()
+	var pops := [0]
+	var count := func(_a: Vector2, _v: Vector2, _c: Color) -> void: pops[0] += 1
+	main.pourer.popped.connect(count)
+	var t := 0.0
+	while main.phase != Main.Phase.SHOP and t < 60.0:
+		var dec := pilot.decide(main)
+		if dec.serve:
+			main.request_serve()
+		main.tick(DT, dec.hold)
+		t += DT
+	main.pourer.popped.disconnect(count)
+	return {"results": main.results.duplicate(), "coins": main.round_stats.coins, "pops": pops[0]}
+
+
+## The autopilot feathers beer: mostly GOOD or better, no spill, a bottle per glass.
+func _beer_round_with_autopilot() -> void:
+	var r := _round_of(GameState.BEER, 5)
+	var bands: Array = r.results.map(func(x: Dictionary) -> StringName: return x.band)
+	var good := bands.filter(func(b: StringName) -> bool: return b == Scoring.PERFECT or b == Scoring.GOOD)
+	expect(bands.size() >= 3, "the autopilot serves at least 3 beers in a round (%d)" % bands.size())
+	expect(good.size() * 10 >= bands.size() * 6 and not bands.has(Scoring.SPILL), "...mostly GOOD or better, no spill (%s)" % [bands])
+	expect(r.pops >= bands.size(), "each beer had its own bottle (%d caps for %d glasses)" % [r.pops, bands.size()])
+
+
+## Beer is worth its 150 coins: a round of it earns at least a round of wine.
+func _beer_earns_at_least_wine() -> void:
+	var wine := _round_of(GameState.WINE, 5)
+	var beer := _round_of(GameState.BEER, 5)
+	expect(beer.coins >= wine.coins, "a round of beer earns at least a round of wine (%d vs %d)" % [beer.coins, wine.coins])

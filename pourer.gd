@@ -10,7 +10,9 @@ extends Node2D
 ## right (arrive()); a bottle arrives corked and can't pour until the cork
 ## pops. When it runs dry it refills over GameState.stats.refill_time: a
 ## pitcher fills in place, an empty bottle is replaced by a new one that gets
-## uncorked. Input is ignored while it is busy (is_busy()).
+## uncorked (a beer bottle has a crown cap instead, and its own label art).
+## Input is ignored while it is busy (is_busy()). A beer bottle eases back
+## slowly when DOWN is let go (DrinkDef.ease_return_speed_deg).
 
 ## The pourer vanished (an empty bottle being replaced); `at` = its centre (global).
 signal vanished(at: Vector2)
@@ -58,6 +60,7 @@ var refilling := false
 var corked := false
 
 var _refill_t := -1.0  # < 0 while still swinging back upright
+var _let_go := 0.0  # seconds since DOWN was let go (the ease-out return builds up over them)
 var _refill_from := 0.0
 var _surf_angle := 0.0
 var _surf_point := Vector2.ZERO
@@ -109,6 +112,7 @@ func setup(d: DrinkDef) -> void:
 func reset(fill := 1.0) -> void:
 	tilt = 0.0
 	tilt_vel = 0.0
+	_let_go = 0.0
 	slosh = 0.0
 	slosh_vel = 0.0
 	volume = full_volume * fill
@@ -187,15 +191,26 @@ func step(dt: float, hold: bool) -> float:
 		hold = false
 	var prev_vel := tilt_vel
 	var acc: float
+	var easing := not hold and not refilling and def.ease_return_speed_deg > 0.0
+	_let_go = 0.0 if hold else _let_go + dt
 	if hold:
 		var speed := def.pour_tilt_speed_deg if excess > 0.0 else def.tilt_speed_deg
 		acc = (deg_to_rad(speed * GameState.stats.pour_speed_mult) - tilt_vel) * def.tilt_response
+	elif easing:
+		# Drift back at a speed that builds up over ease_return_ramp and fades
+		# within ease_return_deg of rest (never below a fifth of it).
+		var ramp := clampf(_let_go / def.ease_return_ramp, 0.0, 1.0) if def.ease_return_ramp > 0.0 else 1.0
+		var want := -deg_to_rad(def.ease_return_speed_deg) * ramp * clampf(tilt / deg_to_rad(def.ease_return_deg), 0.2, 1.0)
+		acc = (want - tilt_vel) * def.tilt_response
 	else:
 		acc = -def.return_force - def.return_damp * tilt_vel
 	tilt_vel += acc * dt
 	tilt += tilt_vel * dt
 	var max_tilt := deg_to_rad(def.max_tilt_deg)
-	if tilt < 0.0:
+	if easing and tilt <= deg_to_rad(0.05) and tilt_vel <= 0.0:
+		tilt = 0.0  # eased into rest
+		tilt_vel = 0.0
+	elif tilt < 0.0:
 		tilt = 0.0
 		# Clunk back onto the table; small speeds just settle.
 		tilt_vel = -tilt_vel * def.rest_bounce if tilt_vel < -0.2 else 0.0
@@ -272,7 +287,7 @@ func _step_arrival(dt: float) -> void:
 			angle += deg_to_rad(WIGGLE_DEG) * (uncorking / _uncork_time) * sin(uncorking * WIGGLE_FREQ)
 		if uncorking >= _uncork_time - 1e-6:
 			corked = false
-			popped.emit(to_global(cork_rect().get_center()), Vector2(0.0, -CORK_SPEED).rotated(rotation), def.liquid_highlight)
+			popped.emit(to_global(_closure_rect().get_center()), Vector2(0.0, -CORK_SPEED).rotated(rotation), def.liquid_highlight)
 	_apply_lean(angle)
 	if not corked and Arrival.done(_arrive_t):
 		_arrive_t = -1.0
@@ -299,6 +314,19 @@ func cork_rect() -> Rect2:
 	var m := _mouth()
 	var top := _bounds(def.pourer_outer).position.y
 	return Rect2(m.x - 0.3, top - 1.0 - m.y * 1.3, m.y + 0.6, m.y * 1.3 + 3.0)
+
+
+## The crown cap on a capped beer bottle (local, upright): over the mouth and
+## its lip ring, crimped round it.
+func cap_rect() -> Rect2:
+	var m := _mouth()
+	var top := _bounds(def.pourer_outer).position.y
+	return Rect2(m.x - 3.0, top - 1.6, m.y + 6.0, 3.4)
+
+
+## Whatever closes this bottle: the crown cap on beer, the cork on wine.
+func _closure_rect() -> Rect2:
+	return cap_rect() if def.bottle_look == DrinkDef.BottleLook.BEER else cork_rect()
 
 
 ## The interior's top edge — a bottle's mouth — as x = left, y = width.
@@ -453,20 +481,29 @@ func _draw_front(ci: CanvasItem) -> void:
 		for seg in Geometry2D.intersect_polyline_with_polygon(line, _drawn_interior):
 			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.85), 0.45, true)
+	var beer := def.bottle_look == DrinkDef.BottleLook.BEER
 	if def.pourer_label.has_area():
-		_draw_label(ci, def.pourer_label)
+		if beer:
+			_draw_beer_label(ci, def.pourer_label)
+		else:
+			_draw_label(ci, def.pourer_label)
 	if def.pourer_foil.has_area():
-		_draw_foil(ci, def.pourer_foil)
+		if beer:
+			_draw_neck_label(ci, def.pourer_foil)
+		else:
+			_draw_foil(ci, def.pourer_foil)
 	var inner := _bounds(_drawn_interior)
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 3.0, inner.end.y - 6.0, 2.3), Color(Palette.WHITE, 0.45), 1.8)
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 20.0, lerpf(inner.position.y, inner.end.y, 0.6), 4.8), Color(Palette.WHITE, 0.25), 0.6)
 	VesselArt.draw_rim_light(ci, _drawn_outer, Color(Palette.WHITE, 0.6), 0.45)
 	var m := _mouth()
-	if corked:
+	if corked and not beer:
 		VesselArt.draw_cork(ci, cork_rect())
 	if def.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
 		var ring := VesselArt.rounded(_rect_poly(Rect2(m.x - 2.8, box.position.y - 0.8, m.y + 5.6, 3.4)), 1.2)
 		ci.draw_colored_polygon(ring, Color(g.lightened(0.45), 0.8))
+		if corked and beer:
+			VesselArt.draw_crown_cap(ci, cap_rect())
 	else:
 		var rim := VesselArt.span_at(_drawn_outer, box.position.y + 0.3)
 		ci.draw_line(Vector2(rim.x + 0.4, box.position.y + 0.35), Vector2(rim.y - 0.4, box.position.y + 0.35), Color(Palette.WHITE, 0.6), 0.5, true)
@@ -498,8 +535,47 @@ func _draw_foil(ci: CanvasItem, r: Rect2) -> void:
 	ci.draw_line(Vector2(r.position.x + 0.4, r.position.y + 0.3), Vector2(r.end.x - 0.4, r.position.y + 0.3), Color(Palette.SAND, 0.5), 0.5, true)
 
 
+## A beer label: cream, a red band across its middle between gold rules, an
+## ear of barley above the band and two lines of "print" under it.
+func _draw_beer_label(ci: CanvasItem, r: Rect2) -> void:
+	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 3.0), r.position.x, r.end.x, _label_tex())
+	var band := Rect2(r.position.x, r.position.y + r.size.y * 0.44, r.size.x, r.size.y * 0.22)
+	VesselArt.draw_hgradient(ci, _rect_poly(band), band.position.x, band.end.x, _neck_tex())
+	var gold := Color(Palette.CAP_GOLD, 0.95)
+	ci.draw_rect(Rect2(band.position.x, band.position.y - 0.9, band.size.x, 0.5), gold)
+	ci.draw_rect(Rect2(band.position.x, band.end.y + 0.4, band.size.x, 0.5), gold)
+	var cx := r.position.x + r.size.x * 0.5
+	var ink := Color(Palette.BEER_LABEL.darkened(0.2), 0.9)
+	var foot := r.position.y + r.size.y * 0.4
+	ci.draw_line(Vector2(cx, foot), Vector2(cx, r.position.y + 3.5), ink, 0.5, true)
+	for k in 4:  # the ear's grains, alternating sides up the stalk
+		var y := foot - 2.2 - k * 2.0
+		var side := -1.0 if k % 2 == 0 else 1.0
+		ci.draw_set_transform(Vector2(cx + side * 1.0, y), side * 0.5, Vector2(0.55, 1.0))
+		ci.draw_circle(Vector2.ZERO, 1.2, gold.darkened(0.15))
+		ci.draw_set_transform(Vector2.ZERO)
+	ci.draw_circle(Vector2(cx, r.position.y + 3.2), 0.8, gold.darkened(0.15))
+	ci.draw_rect(Rect2(cx - 7.0, r.end.y - 8.5, 14.0, 1.1), ink)
+	ci.draw_rect(Rect2(cx - 4.5, r.end.y - 5.5, 9.0, 0.8), Color(ink, 0.5))
+
+
+## A neck label: red, shaded round the neck, with a gold rule near each edge.
+func _draw_neck_label(ci: CanvasItem, r: Rect2) -> void:
+	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 0.8), r.position.x, r.end.x, _neck_tex())
+	var gold := Color(Palette.CAP_GOLD, 0.9)
+	ci.draw_rect(Rect2(r.position.x, r.position.y + 1.2, r.size.x, 0.45), gold)
+	ci.draw_rect(Rect2(r.position.x, r.end.y - 1.65, r.size.x, 0.45), gold)
+
+
 static var _label: GradientTexture1D
 static var _foil: GradientTexture1D
+static var _neck: GradientTexture1D
+
+
+static func _neck_tex() -> GradientTexture1D:
+	if _neck == null:
+		_neck = VesselArt.gradient([[0.0, Palette.BEER_LABEL.darkened(0.55)], [0.35, Palette.BEER_LABEL], [0.65, Palette.BEER_LABEL.darkened(0.25)], [1.0, Palette.BEER_LABEL.darkened(0.6)]])
+	return _neck
 
 
 static func _label_tex() -> GradientTexture1D:

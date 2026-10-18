@@ -18,6 +18,14 @@ const WINE := Color("a22633")
 const WINE_LIGHT := Color("e43b44")
 const BOTTLE := Color("265c42")
 
+## Beer: the beer and its highlight, its head, the brown bottle, the crown cap and the label's red.
+const BEER := Color("e8a33a")
+const BEER_LIGHT := Color("ffd77a")
+const FOAM := Color("f6efdf")
+const BEER_BOTTLE := Color("5a2e0e")
+const CAP_GOLD := Color("d9a441")
+const BEER_LABEL := Color("b33a2e")
+
 ## A lime wedge: the peel and the flesh.
 const LIME_PEEL := Color("3e8948")
 const LIME_FLESH := Color("d4ec8e")

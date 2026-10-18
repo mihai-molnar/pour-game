@@ -14,6 +14,7 @@ extends Node2D
 ##   --seed=N             seed the drink picks so a run repeats
 ##   --coins=N            start the session with N coins
 ##   --shop               open the shop at startup (round 1 comes after it)
+##   --round=N            start as if N rounds had been played (with --shop: the shop after round N)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
 ##   --quit=S             quit after S seconds
 
@@ -92,7 +93,7 @@ func _ready() -> void:
 	glass.garnish_landed.connect(_on_garnish_landed)
 	pourer.landed.connect(_on_landed)
 	pourer.vanished.connect(effects.puff)
-	pourer.popped.connect(effects.cork)
+	pourer.popped.connect(_on_popped)
 	var args := _parse_args()
 	if args.has("seed"):
 		GameState.rng.seed = int(args["seed"])
@@ -108,10 +109,12 @@ func _ready() -> void:
 	_shot_every = float(args.get("shot-every", "1.0"))
 	if args.has("quit"):
 		_quit_at = float(args["quit"])
+	var played := int(args.get("round", "0"))
 	if args.has("shop"):
-		GameState.round_number = 0  # the round after this shop is round 1
+		GameState.round_number = played  # the round after this shop is played + 1
 		open_shop()
 	else:
+		GameState.round_number = played + 1
 		start_round()
 
 
@@ -310,10 +313,10 @@ func tick(dt: float, hold: bool) -> void:
 		time_left = maxf(time_left - dt, 0.0)
 		if time_left <= 0.0:
 			_on_time_up()
-	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy():
+	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy() and glass.is_upright():
 		_serve()
 	if phase == Phase.LAST_CALL and not is_swapping():
-		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty() or glass.garnish_busy():
+		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty() or glass.garnish_busy() or not glass.is_upright():
 			_idle = 0.0
 		else:
 			_idle += dt
@@ -327,6 +330,7 @@ func _step_sim(dt: float, hold: bool) -> void:
 	var out := pourer.step(dt, hold)
 	if out > 0.0:
 		stream.emit(pourer.global_position, pourer.exit_velocity(), out, dt)
+	glass.step_tilt(dt, (hold and not pourer.is_busy()) or pourer.is_pouring() or not stream.is_empty())
 	stream.step(dt, glass)
 	glass.step(dt)
 
@@ -351,7 +355,8 @@ func _on_time_up() -> void:
 
 
 ## Scores the glass; it vanishes and (unless it's last call) the next glass
-## arrives — with the other pourer when the drink changes.
+## arrives — with the other pourer when the drink changes, and with a new
+## bottle after every beer.
 func _serve() -> void:
 	_serve_queued = false
 	if glass.volume < glass.capacity * ACTIVE_SHARE:
@@ -377,12 +382,20 @@ func _serve() -> void:
 		_shop_in = SHOP_DELAY
 		return
 	var next := _pick_drink()
-	if next != drink:
+	if next != drink or drink.bottle_per_glass:
 		effects.puff(pourer.center_global())
 		pourer.arrive(next, GLASS_POS + next.pourer_offset)
 		stream.set_drink(next)
 	drink = next
 	glass.arrive(drink, GLASS_POS)
+
+
+## A bottle opened: a cork pops out of wine, a crown cap flies off beer.
+func _on_popped(at: Vector2, velocity: Vector2, spray: Color) -> void:
+	if pourer.def.bottle_look == DrinkDef.BottleLook.BEER:
+		effects.cap(at, velocity, spray)
+	else:
+		effects.cork(at, velocity, spray)
 
 
 ## Ice landing in liquid splashes.
@@ -426,11 +439,12 @@ func _refresh_hud() -> void:
 		var extras: Array[String] = []
 		for g in glass.garnishes:
 			extras.append(String(g.id))
-		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d  PHASE %s\nGARNISH %s" % [
+		var head := "\nFOAM %d (%d beer)" % [roundi(glass.foam.volume), roundi(glass.foam.beer)] if glass.foam != null else ""
+		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d  PHASE %s\nGARNISH %s%s" % [
 			roundi(rad_to_deg(pourer.tilt)), roundi(pourer.flow),
 			roundi(pourer.volume), roundi(pourer.full_volume),
 			roundi(glass.volume), roundi(glass.target), err,
-			stream.parcel_count(), Phase.keys()[phase], ", ".join(extras) if not extras.is_empty() else "-",
+			stream.parcel_count(), Phase.keys()[phase], ", ".join(extras) if not extras.is_empty() else "-", head,
 		])
 
 
@@ -483,3 +497,52 @@ func _sweep(drink_id: String) -> void:
 				(glass.volume - at_release) / glass.capacity * 100.0, t - h, roundi(glass.spilled + stream.spilled),
 			])
 			h += 0.2
+	if d.has_foam():
+		_sweep_feathered(d)
+
+
+## Beer: feathered pours like the autopilot's (DOWN on while the flow is under
+## an aim, off above it) released where the autopilot releases, from a full
+## bottle; then flat out (DOWN held). Per row: when DOWN was let go for good,
+## when the glass stood up, the beer's rows over (+) or under (-) the line
+## then, 2 s later and 6 s later, the head in fingers then, what ran over the rim and
+## what missed the glass (px²), what was left in the bottle, and the steepest
+## bottle tilt past rest.
+func _sweep_feathered(d: DrinkDef) -> void:
+	var dt := 1.0 / 60.0
+	var share: float = Autopilot.new().release_at[d.id]
+	print("-- feathered from a full bottle, released at %d%% of the line once drained --" % roundi(share * 100.0))
+	print("aim_flow  stop_s  up_s  rows_up  rows_2s  rows_6s  fingers  over_rim  missed  bottle_left%  peak_deg")
+	for aim in [200, 300, 400, 500, 600, 700, 800, 900, 1000, -1]:
+		stream.clear()
+		stream.spilled = 0.0
+		glass.reset()
+		glass.place(GLASS_POS)
+		pourer.reset()
+		var t := 0.0
+		var stop := -1.0
+		var up := -1.0
+		var rows_up := 0
+		var rows_2s := 0
+		var fingers := 0.0
+		var peak := 0.0
+		while t < 25.0:
+			if stop < 0.0 and Autopilot.beer_coming(glass, stream, pourer) >= glass.target * share:
+				stop = t
+			var hold: bool = stop < 0.0 and (aim < 0 or Autopilot.feather(pourer, aim))
+			_step_sim(dt, hold)
+			peak = maxf(peak, pourer.tilt)
+			t += dt
+			if stop >= 0.0 and up < 0.0 and not pourer.is_pouring() and stream.is_empty() and glass.is_upright():
+				up = t
+				rows_up = roundi(glass.target_y()) - roundi(glass.surface_level(glass.volume))
+				fingers = (glass.surface_level(glass.volume) - glass.foam_level()) / Foam.FINGER
+			if up >= 0.0 and rows_2s == 0 and t >= up + 2.0:
+				rows_2s = roundi(glass.target_y()) - roundi(glass.surface_level(glass.volume)) + 1000
+			if up >= 0.0 and t >= up + 6.0:
+				break
+		print("%8s  %6.2f  %4.1f  %+7d  %+7d  %+7d  %7.1f  %8d  %6d  %12.1f  %8d" % [
+			"flat out" if aim < 0 else str(aim), stop, up, rows_up, rows_2s - 1000,
+			roundi(glass.target_y()) - roundi(glass.surface_level(glass.volume)), fingers,
+			roundi(glass.spilled), roundi(stream.spilled), pourer.volume / pourer.full_volume * 100.0, roundi(rad_to_deg(peak)),
+		])

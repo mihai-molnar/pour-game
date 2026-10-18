@@ -22,8 +22,9 @@ const BASE_STATS := {
 }
 const WATER := preload("res://drinks/water.tres")
 const WINE := preload("res://drinks/wine.tres")
+const BEER := preload("res://drinks/beer.tres")
 ## Every drink, in the shop's order. Water is free and owned from the start.
-const DRINKS := [WATER, WINE]
+const DRINKS := [WATER, WINE, BEER]
 
 var coins := 0
 var round_number := 1
@@ -71,10 +72,16 @@ func owns_garnish(g: GarnishDef) -> bool:
 	return owned_garnishes.has(g.id)
 
 
-## Buys `d` if it isn't owned and there are enough coins: it is switched on
-## for the next round, which opens with it. False when nothing was bought.
+## True once `d` is on sale: its unlock_round rounds have been played (in the
+## shop round_number is the round just played; 0 under --shop before any round).
+func is_unlocked(d: DrinkDef) -> bool:
+	return d.unlock_round == 0 or round_number >= d.unlock_round
+
+
+## Buys `d` if it is unlocked, isn't owned and there are enough coins: it is
+## switched on for the next round, which opens with it. False when nothing was bought.
 func buy_drink(d: DrinkDef) -> bool:
-	if owns_drink(d) or coins < d.price:
+	if owns_drink(d) or not is_unlocked(d) or coins < d.price:
 		return false
 	coins -= d.price
 	owned_drinks.append(d)
