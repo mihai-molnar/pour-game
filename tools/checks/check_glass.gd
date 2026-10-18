@@ -2,8 +2,8 @@ extends CheckBase
 ## Checks the glass: exact capacity and fixed target per drink, rows from the
 ## line and the scoring band in rows, geometry helpers, where the fill line and
 ## band marks are drawn (on the rows scoring measures), the drawn liquid
-## matching the volume and level, setup leaving no state behind, and the
-## arrival. Run:
+## matching the volume and level, setup leaving no state behind, the
+## arrival, and garnishes (ice raising the level, the lime on the rim). Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=glass
 
 const DT := 1.0 / 60.0
@@ -47,6 +47,8 @@ func run() -> void:
 	_check_line_span(glass)
 	_check_drawn_liquid(glass)
 
+	_check_ice(glass, water)
+	_check_lime(glass, water)
 	_check_wine(glass, wine)
 	glass.setup(water)
 	expect(glass.capacity == 2346.0 and is_equal_approx(glass.target, want), "back to water: same capacity and target")
@@ -116,6 +118,77 @@ func _check_drawn_liquid(glass: Glass) -> void:
 			near(Pourer.poly_area(poly) / vol, 1.0, "%s: drawn liquid area matches %.0f px²" % [n, vol], 0.04)
 		expect(top >= glass.level_for(glass.capacity) - 0.01, "%s: liquid never draws above the rim" % n)
 	glass.reset()
+
+
+func _steps(glass: Glass, seconds: float) -> void:
+	var t := 0.0
+	while t < seconds - 1e-6:
+		glass.step(DT)
+		t += DT
+
+
+func _drawn_top(glass: Glass) -> float:
+	var top := INF
+	for p in glass.liquid_polygon():
+		top = minf(top, p.y)
+	return top
+
+
+## Ice falls in, then takes up room: the iced level is what is drawn and
+## scored, and an iced glass holds less before it spills.
+func _check_ice(glass: Glass, water: DrinkDef) -> void:
+	var ice: GarnishDef = water.garnishes[0]
+	glass.setup(water)
+	glass.place(HOME)
+	var landed := []
+	glass.garnish_landed.connect(func(g: GarnishDef, _at: Vector2) -> void: landed.append(g.id))
+	expect(glass.add_garnish(ice) and not glass.add_garnish(ice), "ice goes in once")
+	expect(glass.garnish_busy() and glass.displaced(glass.target) == 0.0, "falling ice displaces nothing yet")
+	_steps(glass, Glass.ICE_FALL_TIME + DT)
+	expect(not glass.garnish_busy() and landed == [&"ice"], "it lands after ICE_FALL_TIME, once (%s)" % [landed])
+	near(glass.surface_level(0.0), glass.level_for(0.0), "ice in an empty glass makes no water level")
+	var rows := glass.rows_from_line(glass.target)
+	expect(rows >= 4 and rows <= 6, "ice raises the surface at the line by 4-6 rows (%d)" % rows)
+	var prev := INF
+	var rising := true
+	var v := 0.0
+	while v <= glass.max_liquid():
+		rising = rising and glass.surface_level(v) <= prev
+		prev = glass.surface_level(v)
+		v += 5.0
+	expect(rising, "the iced level rises with every 5 px² poured")
+	near(glass.surface_level(glass.max_liquid()), glass.level_for(glass.capacity), "max_liquid fills an iced glass to the rim", 0.01)
+	glass.receive(HOME.x, glass.target * 0.7, 0.0)
+	_steps(glass, 3.0)
+	near(_drawn_top(glass), glass.surface_level(glass.volume), "a calm iced glass is drawn at the iced level", 0.05)
+	glass.receive(HOME.x, glass.capacity, 0.0)
+	near(glass.volume, glass.max_liquid(), "an iced glass holds max_liquid", 0.01)
+	expect(glass.spilled > 0.5, "...and the rest spills")
+	glass.setup(water)
+	glass.place(HOME)
+	glass.receive(HOME.x, glass.capacity - 4.0 * 38.0, 0.0)
+	glass.add_garnish(ice)
+	_steps(glass, Glass.ICE_FALL_TIME + DT)
+	expect(glass.spilled > 0.5 and glass.volume <= glass.max_liquid() + 0.01, "ice into a nearly full glass overflows")
+	for i in ice.cube_count:
+		expect(not Geometry2D.triangulate_polygon(GarnishArt.ice_outline(Vector2.ZERO, ice.cube_size, 0.3 * i)).is_empty(), "ice cube %d triangulates" % i)
+	glass.arrive(water, HOME)
+	expect(glass.garnishes.is_empty() and not glass.garnish_busy() and glass.displaced(1000.0) == 0.0, "an arriving glass is bare")
+	glass.place(HOME)
+
+
+## The lime drops onto the rim and changes nothing about the level.
+func _check_lime(glass: Glass, water: DrinkDef) -> void:
+	var lime: GarnishDef = water.garnishes[1]
+	glass.setup(water)
+	glass.place(HOME)
+	glass.receive(HOME.x, glass.target, 0.0)
+	expect(glass.add_garnish(lime) and glass.garnish_busy(), "the lime drops onto the rim")
+	_steps(glass, Glass.LIME_DROP_TIME + DT)
+	expect(not glass.garnish_busy() and glass.has_garnish(&"lime"), "...and sits there")
+	eq(glass.rows_from_line(glass.volume), 0, "the lime doesn't change the level")
+	for poly in GarnishArt.lime_polygons(Vector2.ZERO, 7.0, -0.6):
+		expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "the lime's polygons triangulate")
 
 
 func _check_arrival(glass: Glass, water: DrinkDef) -> void:

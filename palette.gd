@@ -18,6 +18,10 @@ const WINE := Color("a22633")
 const WINE_LIGHT := Color("e43b44")
 const BOTTLE := Color("265c42")
 
+## A lime wedge: the peel and the flesh.
+const LIME_PEEL := Color("3e8948")
+const LIME_FLESH := Color("d4ec8e")
+
 const GOLD := Color("feae34")
 const GREEN := Color("63c74d")
 const RED := Color("e43b44")
