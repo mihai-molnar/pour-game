@@ -447,6 +447,13 @@ func _mixed_round_with_autopilot() -> void:
 	expect(good * 2 >= main.results.size(), "the autopilot lands most glasses GOOD or better (%d of %d)" % [good, main.results.size()])
 
 
+func _garnish_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for g in main.garnish_keys():
+		ids.append(g.id)
+	return ids
+
+
 func _own_garnishes() -> void:
 	GameState.coins = 25
 	GameState.buy_garnish(GameState.WATER.garnishes[0])
@@ -457,18 +464,18 @@ func _garnish_keys_follow_the_rules() -> void:
 	_fresh()
 	var drink := main.drink
 	main.drink = null  # the sweep never starts a round, but still ticks once before quitting
-	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "the plain hint before any drink is set")
+	expect(main.garnish_keys().is_empty(), "no garnish keys before any drink is set")
 	main.drink = drink
 	expect(not main.try_garnish(KEY_UP), "nothing during INTRO")
 	_run(Main.INTRO_TIME + DT)
 	expect(not main.try_garnish(KEY_UP), "nothing before buying ice")
-	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint before buying")
+	expect(main.garnish_keys().is_empty(), "no garnish keys before buying")
 	GameState.coins = 10
 	GameState.buy_garnish(GameState.WATER.garnishes[0])
-	eq(main.hint_text(), "HOLD DOWN  pour   ·   UP  ice   ·   SPACE  serve   ·   F1  debug", "the hint names ice once bought")
+	eq(_garnish_ids(), [&"ice"], "ice's key once bought")
 	GameState.coins = 15
 	GameState.buy_garnish(GameState.WATER.garnishes[1])
-	eq(main.hint_text(), "HOLD DOWN  pour   ·   UP  ice   ·   LEFT  lime   ·   SPACE  serve   ·   F1  debug", "...and lime")
+	eq(_garnish_ids(), [&"ice", &"lime"], "...and lime's")
 	expect(main.try_garnish(KEY_UP) and not main.try_garnish(KEY_UP), "UP adds ice once")
 	expect(main.try_garnish(KEY_LEFT) and not main.try_garnish(KEY_DOWN), "LEFT adds lime; other keys don't")
 	_run(Glass.ICE_FALL_TIME + DT)  # a serve waits for falling ice
@@ -482,7 +489,7 @@ func _garnish_keys_follow_the_rules() -> void:
 	_serve_with_next(GameState.WINE)
 	_run(0.6)
 	expect(not main.try_garnish(KEY_UP) and not main.try_garnish(KEY_LEFT), "wine takes no garnish")
-	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint on wine")
+	expect(main.garnish_keys().is_empty(), "no garnish keys on wine")
 	main.time_left = 0.01
 	_run(6.0)
 	expect(main.phase == Main.Phase.SHOP, "the round ended")

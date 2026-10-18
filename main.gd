@@ -42,7 +42,6 @@ const ACTIVE_SHARE := 0.01
 ## Result popups float this far above the glass's rim (world px).
 const POPUP_ABOVE_RIM := 14.0
 const AUTOPLAY_SHOP_WAIT := 1.5
-const HINT_SEP := "   ·   "
 
 @onready var glass: Glass = $Glass
 @onready var pourer: Pourer = $Pourer
@@ -67,6 +66,8 @@ var streak := 0
 var round_stats := {}
 ## Every glass scored this round (Scoring.score results plus "drink", its id).
 var results: Array[Dictionary] = []
+## The DOWN hold the last tick() used (false during INTRO and in the shop) — the DOWN key shows it.
+var hold_down := false
 
 var _serve_queued := false
 var _shop_in := -1.0  # >= 0 while the last-call glass's puff plays before the shop opens
@@ -204,7 +205,7 @@ func is_serving_phase() -> bool:
 ## — while serving, once the glass has landed, if the player owns it and it
 ## isn't on the glass yet. True if it was added.
 func try_garnish(key: Key) -> bool:
-	if not is_serving_phase() or _shop_in >= 0.0 or not glass.visible or glass.is_arriving() or drink == null:
+	if not _can_garnish():
 		return false
 	for g in drink.garnishes:
 		if g.key == key and GameState.owns_garnish(g):
@@ -212,14 +213,29 @@ func try_garnish(key: Key) -> bool:
 	return false
 
 
-## The key hint for the current drink, naming the garnishes the player owns for it.
-func hint_text() -> String:
-	var parts: Array[String] = ["HOLD DOWN  pour"]
-	for g in drink.garnishes if drink != null else []:
-		if GameState.owns_garnish(g):
-			parts.append("%s  %s" % [OS.get_keycode_string(g.key).to_upper(), g.display_name.to_lower()])
-	parts.append_array(["SPACE  serve", "F1  debug"])
-	return HINT_SEP.join(parts)
+## True while a garnish can go on the glass: serving, the glass landed, the round not ending.
+func _can_garnish() -> bool:
+	return is_serving_phase() and _shop_in < 0.0 and glass.visible and not glass.is_arriving() and drink != null
+
+
+## The garnishes a key press would add right now (the current drink's, owned,
+## not on the glass yet), in the drink's order — the garnish keys on screen.
+func garnish_keys() -> Array[GarnishDef]:
+	var out: Array[GarnishDef] = []
+	if not _can_garnish():
+		return out
+	for g in drink.garnishes:
+		if GameState.owns_garnish(g) and not glass.has_garnish(g.id):
+			out.append(g)
+	return out
+
+
+## True when Space would serve the glass at once (not merely queue it): the
+## SPACE key shows only then.
+func can_serve_now() -> bool:
+	return is_serving_phase() and _shop_in < 0.0 and not _serve_queued and not is_swapping() \
+		and not pourer.is_busy() and glass.visible and glass.volume >= glass.capacity * ACTIVE_SHARE \
+		and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy()
 
 
 func request_serve() -> void:
@@ -261,9 +277,11 @@ func _process(_dt: float) -> void:
 func tick(dt: float, hold: bool) -> void:
 	phase_time += dt
 	if phase == Phase.SHOP:
+		hold_down = false
 		return  # the round is over and the bar is hidden
 	if phase == Phase.INTRO:
 		hold = false
+	hold_down = hold
 	if phase == Phase.INTRO and phase_time >= INTRO_TIME:
 		_enter(Phase.PLAYING)
 	_step_sim(dt, hold)
@@ -389,12 +407,6 @@ func _refresh_hud() -> void:
 	hud.set_time(time_left)
 	hud.set_coins(GameState.coins)
 	hud.set_streak(Scoring.multiplier(streak, GameState.stats))
-	var hint := hint_text()
-	if _serve_queued:
-		hint = "SERVING..."
-	elif pourer.refilling:
-		hint = "REFILLING..."
-	hud.set_hint(hint)
 	if hud.is_debug_visible():
 		var err := (glass.volume - glass.target) / glass.target * 100.0
 		var extras: Array[String] = []

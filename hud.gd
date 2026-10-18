@@ -1,7 +1,7 @@
 class_name Hud
 extends CanvasLayer
 ## Everything drawn over the game: timer, coins, streak multiplier, result
-## popups, banners, the key hint and the F1 debug readout, in soft dark pills
+## popups, banners and the F1 debug readout, in soft dark pills
 ## set in Fredoka. Purely visual — it never drives game logic (its tweens only
 ## animate labels). Laid out by hand in the 640x360 HUD space (not with
 ## containers) so positions are known the moment they change.
@@ -9,7 +9,7 @@ extends CanvasLayer
 const FONT_FILE := preload("res://fonts/Fredoka.ttf")
 const SCREEN_W := 640.0
 const SIZE := 14
-const HINT_SIZE := 9
+const DEBUG_SIZE := 9
 const POPUP_SIZE := 22
 const BANNER_SIZE := 26
 ## Pills: top-left corner of the coin pill, their height, inner padding.
@@ -39,13 +39,11 @@ var streak_label: Label
 ## The big copy of a grown multiplier on its way to the counter (null otherwise).
 var streak_flyer: Label
 var banner_label: Label
-var hint_label: Label
 var debug_label: Label
 
 var _coin_pill: Panel
 var _divider: ColorRect
 var _timer_pill: Panel
-var _hint_pill: Panel
 var _streak_pos := Vector2.ZERO  # right after the coin count; set_coins keeps it there
 var _streak_mult := 1.0
 var _streak_tween: Tween
@@ -116,15 +114,8 @@ func _ready() -> void:
 	banner_label.add_theme_color_override("font_outline_color", Color(Palette.INK, 0.85))
 	banner_label.add_theme_constant_override("outline_size", 8)
 	banner_label.visible = false
-	_hint_pill = _pill(Rect2(SCREEN_W - PILL_AT.x - 100.0, 360.0 - 8.0 - 17.0, 100.0, 17.0))
-	hint_label = make_label(_hint_pill.position + Vector2(PILL_PAD, 0), Color(Palette.WHITE, 0.7))
-	hint_label.size.y = 17.0
-	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hint_label.add_theme_font_override("font", font(500))
-	hint_label.add_theme_font_size_override("font_size", HINT_SIZE)
 	debug_label = make_label(Vector2(12, 38), Palette.FROST)
-	debug_label.add_theme_font_size_override("font_size", HINT_SIZE)
+	debug_label.add_theme_font_size_override("font_size", DEBUG_SIZE)
 	debug_label.visible = false
 	set_coins(0)
 
@@ -288,16 +279,6 @@ func show_banner(text: String, seconds: float) -> void:
 	_banner_tween.tween_interval(maxf(seconds - 0.3, 0.0))
 	_banner_tween.tween_property(banner_label, "modulate:a", 0.0, 0.3)
 	_banner_tween.tween_callback(banner_label.hide)
-
-
-## The key hint, in a pill in the bottom-right corner (clear of the glass and the pourer).
-func set_hint(text: String) -> void:
-	hint_label.text = text
-	var w := text_width(text, HINT_SIZE, 500) + PILL_PAD * 2.0
-	_hint_pill.size.x = w
-	_hint_pill.position.x = SCREEN_W - PILL_AT.x - w
-	hint_label.position.x = _hint_pill.position.x
-	hint_label.size.x = w
 
 
 func toggle_debug() -> void:
