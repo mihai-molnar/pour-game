@@ -44,6 +44,7 @@ func run() -> void:
 	eq(glass.band_edges(6), Vector2(-74.0, -61.5), "GOOD ENOUGH reaches the rim and is cut there")
 	eq(glass.band_edges(9), Vector2(-74.0, -58.5), "...however wide the band")
 	expect(glass.bracket_x() <= glass.outer_x_at(-68.0).x - 2.0, "the bracket clears the wall (%.1f)" % glass.bracket_x())
+	_check_line_span(glass)
 	_check_drawn_liquid(glass)
 
 	_check_wine(glass, wine)
@@ -76,11 +77,19 @@ func _check_wine(glass: Glass, wine: DrinkDef) -> void:
 	for y in range(int(ly) - 7, int(ly) + 8):
 		bulge = minf(bulge, glass.outer_x_at(float(y)).x)
 	expect(glass.bracket_x() <= bulge - 2.0, "wine: the bracket clears the bowl's bulge (%.1f vs %.1f)" % [glass.bracket_x(), bulge])
+	_check_line_span(glass)
 	_check_drawn_liquid(glass)
 	expect(_tint_clear(glass), "wine: wall tint polygons leave the bowl clear")
 	var mat := (glass.get_node("Liquid") as CanvasItem).material as ShaderMaterial
 	eq([mat.get_shader_parameter("tint"), mat.get_shader_parameter("absorb"), mat.get_shader_parameter("scatter")],
 		[wine.liquid_color, wine.liquid_absorb, wine.liquid_scatter], "wine: the liquid shader gets wine's look")
+
+
+## The target marker runs from the bracket to the glass's left wall, never across the glass.
+func _check_line_span(glass: Glass) -> void:
+	var span := glass.line_span()
+	eq(span.x, glass.bracket_x(), "%s: the target marker starts at the bracket" % glass.def.id)
+	near(span.y, glass.outer_x_at(glass.line_y()).x, "%s: ...and stops at the glass's left wall" % glass.def.id, 0.01)
 
 
 ## What is drawn must match what is scored: a calm glass's liquid top sits

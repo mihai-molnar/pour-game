@@ -11,6 +11,8 @@ const ARC_STEP := deg_to_rad(15.0)
 
 static var _soft: GradientTexture2D
 static var _clear_walls: GradientTexture1D
+static var _cork: GradientTexture1D
+static var _cork_flecks: Array[Vector3] = []  # u, v (share of the cork), radius in px; negative radius = a light fleck
 
 
 ## The wall fill for clear glass (pass the outer's x range to draw_hgradient):
@@ -97,12 +99,33 @@ static func gradient(stops: Array) -> GradientTexture1D:
 	return tex
 
 
-## Fills `poly` with `tex` running left to right from x0 to x1.
-static func draw_hgradient(ci: CanvasItem, poly: PackedVector2Array, x0: float, x1: float, tex: GradientTexture1D) -> void:
+## Fills `poly` with `tex` running left to right from x0 to x1, tinted by `modulate`.
+static func draw_hgradient(ci: CanvasItem, poly: PackedVector2Array, x0: float, x1: float, tex: GradientTexture1D, modulate := Color.WHITE) -> void:
 	var uvs := PackedVector2Array()
 	for p in poly:
 		uvs.append(Vector2((p.x - x0) / (x1 - x0), 0.5))
-	ci.draw_polygon(poly, PackedColorArray([Color.WHITE]), uvs, tex)
+	ci.draw_polygon(poly, PackedColorArray([modulate]), uvs, tex)
+
+
+## A natural cork filling `r` (upright, top edge up): light tan, darker toward
+## its sides like a cylinder, bevelled top edges and flecked. The flecks are
+## fixed, so the cork looks the same every frame.
+static func draw_cork(ci: CanvasItem, r: Rect2, alpha := 1.0) -> void:
+	if _cork == null:
+		_cork = gradient([[0.0, Palette.TAN.darkened(0.3)], [0.3, Palette.PEACH], [0.55, Palette.SAND.lerp(Palette.PEACH, 0.4)], [1.0, Palette.TAN.darkened(0.35)]])
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 7
+		for i in 30:
+			var radius := rng.randf_range(0.1, 0.3)
+			_cork_flecks.append(Vector3(rng.randf_range(0.1, 0.9), rng.randf_range(0.08, 0.95), -radius if i % 4 == 0 else radius))
+	var bevel := minf(r.size.x * 0.18, 1.2)
+	var body := rounded(PackedVector2Array([r.position + Vector2(bevel, 0), Vector2(r.end.x - bevel, r.position.y),
+		Vector2(r.end.x, r.position.y + bevel), r.end, Vector2(r.position.x, r.end.y), r.position + Vector2(0, bevel)]), 0.4)
+	draw_hgradient(ci, body, r.position.x, r.end.x, _cork, Color(1, 1, 1, alpha))
+	ci.draw_line(r.position + Vector2(bevel, 0.35), Vector2(r.end.x - bevel, r.position.y + 0.35), Color(Palette.SAND, 0.85 * alpha), 0.6, true)
+	for f in _cork_flecks:
+		var color := Color(Palette.SAND, 0.6 * alpha) if f.z < 0.0 else Color(Palette.BROWN, 0.55 * alpha)
+		ci.draw_circle(r.position + Vector2(f.x, f.y) * r.size, absf(f.z), color)
 
 
 ## Left and right x where the horizontal line at `y` crosses `poly` (INF/-INF if it misses).

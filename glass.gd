@@ -255,6 +255,12 @@ func bracket_x() -> float:
 	return left - 3.0
 
 
+## Local x span of the target marker: from the bracket's spine to the
+## glass's left wall at the line — it doesn't cross the glass.
+func line_span() -> Vector2:
+	return Vector2(bracket_x(), outer_x_at(line_y()).x)
+
+
 ## The liquid as drawn (local): the wave surface across the pixel columns down
 ## to the floor, cut to the rounded inside. Empty when there is (next to)
 ## nothing — Godot can't triangulate sub-pixel slivers.
@@ -480,7 +486,7 @@ func _draw_front(ci: CanvasItem) -> void:
 ## The scoring band: a light bracket (spine + end ticks pointing at the glass)
 ## left of the glass spanning GOOD ENOUGH (±ok_rows), with short inner ticks
 ## where GOOD (±good_rows) ends, underlaid dark so it reads on any background.
-## PERFECT (±perfect_rows) is the fill line's dark band.
+## PERFECT (±perfect_rows) and the target itself are the fill line's marker.
 func _draw_band(ci: CanvasItem) -> void:
 	var x := bracket_x()
 	var ok := band_edges(GameState.stats.ok_rows)
@@ -492,12 +498,13 @@ func _draw_band(ci: CanvasItem) -> void:
 			ci.draw_line(Vector2(x, y), Vector2(x + 1.1, y), look[0], look[1], true)
 
 
-## The fill line: a thin white line on the target's row from the bracket to just
-## past the right wall, over a dark band spanning the PERFECT rows.
+## The fill line: a marker a little bolder than the band's ticks — the spine
+## thickened across the PERFECT rows and a tick on the target's row from the
+## spine to the glass's left wall (line_span()).
 func _draw_fill_line(ci: CanvasItem) -> void:
 	var ly := line_y()
-	var x0 := bracket_x()
-	var x1 := outer_x_at(ly).y + 1.5
+	var span := line_span()
 	var perfect := band_edges(GameState.stats.perfect_rows)
-	ci.draw_rect(Rect2(x0, perfect.x, x1 - x0, perfect.y - perfect.x), Color(Palette.INK, 0.45))
-	ci.draw_line(Vector2(x0, ly), Vector2(x1, ly), Palette.WHITE, 0.6, true)
+	for look: Array in [[Color(Palette.INK, 0.6), 2.3, 1.7], [Palette.WHITE, 1.0, 0.85]]:
+		ci.draw_line(Vector2(span.x, perfect.x), Vector2(span.x, perfect.y), look[0], look[1], true)
+		ci.draw_line(Vector2(span.x, ly), Vector2(span.y - 0.3, ly), look[0], look[2], true)

@@ -62,6 +62,12 @@ func run() -> void:
 	_check_arrival(pourer, water)
 	_check_wine(pourer, glass, wine)
 	_check_drawable_liquid(pourer, water, wine)
+	pourer.setup(wine)
+	var mouth := pourer._mouth()  # x = left edge, y = width
+	var cork := pourer.cork_rect()
+	expect(cork.size.x >= mouth.y, "the cork is at least as wide as the mouth (%.1f vs %.1f)" % [cork.size.x, mouth.y])
+	expect(cork.position.y <= -1.8 - mouth.y, "...and sticks out of the lip ring at least that far (top %.1f)" % cork.position.y)
+	expect(cork.get_center().x > mouth.x and cork.get_center().x < mouth.x + mouth.y, "...centred on the mouth")
 	for d: DrinkDef in [water, wine]:
 		pourer.setup(d)
 		var mat := (pourer.get_node("Liquid") as CanvasItem).material as ShaderMaterial
