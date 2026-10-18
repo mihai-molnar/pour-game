@@ -1,7 +1,7 @@
 extends CheckBase
 ## Plays rounds headless at full simulation speed and checks the round rules
-## from the slice 1 and slice 2 specs (phases, last call, auto-serve, refill,
-## resets, arrivals, drink picks). Run:
+## from the slice 1-3 specs (phases, last call, auto-serve, refill, resets,
+## arrivals, drink picks, the shop between rounds, garnishes). Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=round
 
 const DT := 1.0 / 60.0
@@ -25,6 +25,7 @@ func run() -> void:
 	_spill_costs_coins_but_never_below_zero()
 	_space_ignored_during_swap_and_refill()
 	_next_round_resets_and_reads_stats()
+	_summary_leads_to_the_shop()
 	_round_two_is_water_only()
 	_bought_wine_opens_the_next_round()
 	_picks_follow_the_seed()
@@ -148,6 +149,7 @@ func _last_call_auto_serve() -> void:
 	expect(main.phase == Main.Phase.SUMMARY, "the round ends after the last-call serve")
 	expect(t - served_at >= Main.SUMMARY_DELAY - DT, "the summary waits SUMMARY_DELAY after the last serve (%.2f s)" % (t - served_at))
 	expect(not main.glass.visible, "the last glass vanishes and no new glass arrives")
+	main.open_shop()
 	main.next_round()
 	expect(main.glass.visible and main.glass.is_arriving(), "the next round's first glass is visible and arriving")
 
@@ -298,6 +300,7 @@ func _next_round_resets_and_reads_stats() -> void:
 	main.pourer.volume = main.pourer.full_volume * 0.001
 	main.pourer.refilling = true
 	var round_before: int = GameState.round_number
+	main.open_shop()
 	main.next_round()
 	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "next_round starts the next INTRO")
 	expect(main.streak == 0, "streak resets")
@@ -308,6 +311,31 @@ func _next_round_resets_and_reads_stats() -> void:
 	expect(main.glass.def == main.drink and main.pourer.def == main.drink, "glass and pourer match the round's first drink")
 	expect(not main.summary.visible, "the summary is hidden")
 	GameState.stats = GameState.BASE_STATS.duplicate()
+
+
+func _summary_leads_to_the_shop() -> void:
+	_to_playing()
+	main.time_left = 0.01
+	_run(0.1)
+	expect(main.phase == Main.Phase.SUMMARY, "the round ended")
+	main.next_round()
+	expect(main.phase == Main.Phase.SUMMARY, "next_round does nothing from the summary")
+	main.summary.input_lock = 0.0
+	main.summary._next()
+	expect(main.phase == Main.Phase.SHOP and main.shop.visible and not main.summary.visible, "the summary's button opens the shop")
+	expect(not main.visible and not main.hud.visible, "the bar and the HUD are hidden in the shop")
+	var round_before: int = GameState.round_number
+	_run(1.0, true)
+	expect(main.phase == Main.Phase.SHOP and main.pourer.tilt == 0.0, "nothing ticks in the shop")
+	main.shop.input_lock = 0.0
+	var space := InputEventKey.new()
+	space.physical_keycode = KEY_SPACE
+	space.pressed = true
+	main.shop._unhandled_input(space)
+	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "Space in the shop starts the next round")
+	expect(main.visible and main.hud.visible and not main.shop.visible, "...and brings the bar back")
+	main.summary.input_lock = 0.5
+	main.shop.input_lock = 0.5
 
 
 ## Round 2 of a session that bought wine in the shop: it opens with wine.

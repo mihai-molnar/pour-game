@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://art/background.png" id="2_bg"]
@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://effects.gd" id="10_effects"]
 [ext_resource type="Script" path="res://shadows.gd" id="11_shadows"]
 [ext_resource type="Script" path="res://reflection.gd" id="12_reflection"]
+[ext_resource type="Script" path="res://shop.gd" id="13_shop"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glass"]
 shader = ExtResource("6_liquid")
@@ -87,3 +88,6 @@ script = ExtResource("10_effects")
 script = ExtResource("8_hud")
 
 [node name="RoundSummary" parent="." instance=ExtResource("9_summary")]
+
+[node name="Shop" type="CanvasLayer" parent="."]
+script = ExtResource("13_shop")

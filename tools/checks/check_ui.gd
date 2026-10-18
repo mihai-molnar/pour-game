@@ -1,5 +1,5 @@
 extends CheckBase
-## Checks HUD formatting/state and the round summary screen. Run:
+## Checks HUD formatting/state, the round summary screen and the shop screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=ui
 
 
@@ -95,6 +95,22 @@ func run() -> void:
 	summary._unhandled_input(space)
 	eq(pressed[0], true, "Space on the summary emits next_pressed")
 	eq(summary.visible, false, "...and hides it")
+	eq(summary._button.text, "TO THE SHOP  (SPACE)", "the summary leads to the shop")
+
+	var shop: Shop = load("res://shop.gd").new()
+	add_child(shop)
+	eq(shop.visible, false, "the shop starts hidden")
+	shop.open()
+	eq(shop.next_button.text, "NEXT ROUND  (SPACE)", "NEXT ROUND button")
+	eq(shop.TAB_NAMES, ["UPGRADES", "DRINKS", "MENU"], "the shop's tabs")
+	var left := [false]
+	shop.next_pressed.connect(func() -> void: left[0] = true)
+	shop._unhandled_input(space)
+	shop._next()
+	eq(left[0] == false and shop.visible, true, "Space and the button are ignored right after the shop opens")
+	shop.input_lock = 0.0
+	shop._unhandled_input(space)
+	eq(left[0] and not shop.visible, true, "Space in the shop emits next_pressed and hides it")
 
 	var fx: Effects = load("res://effects.gd").new()
 	add_child(fx)

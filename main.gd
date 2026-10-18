@@ -1,20 +1,22 @@
 class_name Main
 extends Node2D
-## The round loop: INTRO → PLAYING → LAST_CALL → SUMMARY, each glass a random
-## drink you own (see docs/superpowers/specs/2026-10-15-round-loop-design.md
-## and 2026-10-15-second-drink-design.md). Glasses and pourers arrive by
+## The round loop: INTRO → PLAYING → LAST_CALL → SUMMARY → SHOP, each glass a
+## random drink from the menu (see docs/superpowers/specs/2026-10-15-round-loop-design.md,
+## 2026-10-15-second-drink-design.md and 2026-10-18-upgrade-shop-design.md). Glasses and pourers arrive by
 ## sliding in. All round logic advances only in tick(dt, hold), so check
 ## scripts can fast-forward it headless (`manual = true`); tweens are used for
 ## HUD visuals only.
 ##
 ## Dev flags (after `--`):
 ##   --sweep[=drink_id]   headless tuning table for that drink (default water), pourer full and half full, then quit
-##   --autoplay           the Autopilot plays: pours, serves, starts the next round
+##   --autoplay           the Autopilot plays: pours, serves, visits the shop, starts the next round
 ##   --seed=N             seed the drink picks so a run repeats
+##   --coins=N            start the session with N coins
+##   --shop               open the shop at startup (round 1 comes after it)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
 ##   --quit=S             quit after S seconds
 
-enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY }
+enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY, SHOP }
 
 const GLASS_POS := Vector2(256, 280)
 ## The static camera: the world point at the screen centre, and how much closer
@@ -34,6 +36,7 @@ const ACTIVE_SHARE := 0.01
 ## Result popups float this far above the glass's rim (world px).
 const POPUP_ABOVE_RIM := 14.0
 const AUTOPLAY_SUMMARY_WAIT := 1.5
+const AUTOPLAY_SHOP_WAIT := 1.5
 const HINT := "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug"
 
 @onready var glass: Glass = $Glass
@@ -42,6 +45,7 @@ const HINT := "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug"
 @onready var effects: Effects = $Effects
 @onready var hud: Hud = $Hud
 @onready var summary: RoundSummary = $RoundSummary
+@onready var shop: Shop = $Shop
 @onready var camera: Camera2D = $Camera
 @onready var shadows: Shadows = $Shadows
 @onready var reflection: Reflection = $Reflection
@@ -78,7 +82,8 @@ func _ready() -> void:
 	shadows.pourer = pourer
 	reflection.glass = glass
 	reflection.pourer = pourer
-	summary.next_pressed.connect(next_round)
+	summary.next_pressed.connect(open_shop)
+	shop.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	pourer.landed.connect(_on_landed)
 	pourer.vanished.connect(effects.puff)
@@ -90,13 +95,20 @@ func _ready() -> void:
 		_sweep(args["sweep"])
 		get_tree().quit()
 		return
+	if args.has("coins"):
+		GameState.coins = int(args["coins"])
 	if args.has("autoplay"):
 		_autopilot = Autopilot.new()
 	_shot_prefix = args.get("shots", "")
 	_shot_every = float(args.get("shot-every", "1.0"))
 	if args.has("quit"):
 		_quit_at = float(args["quit"])
-	start_round()
+	if args.has("shop"):
+		GameState.round_number = 0  # the round after this shop is round 1
+		_enter(Phase.SUMMARY)
+		open_shop()
+	else:
+		start_round()
 
 
 func _parse_args() -> Dictionary:
@@ -130,11 +142,31 @@ func start_round() -> void:
 	_refresh_hud()
 
 
-func next_round() -> void:
+## From the summary to the shop: the bar and the HUD hide while it is open.
+func open_shop() -> void:
 	if phase != Phase.SUMMARY:
 		return
+	_enter(Phase.SHOP)
+	summary.hide_results()
+	_show_world(false)
+	shop.open()
+
+
+## From the shop to the next round.
+func next_round() -> void:
+	if phase != Phase.SHOP:
+		return
+	shop.close()
+	_show_world(true)
 	GameState.round_number += 1
 	start_round()
+
+
+## Shows or hides the bar (this node's canvas items) and the HUD; the summary
+## and the shop are layers of their own.
+func _show_world(on: bool) -> void:
+	visible = on
+	hud.visible = on
 
 
 ## The next glass's drink: a just-bought drink first, otherwise any drink on the menu.
@@ -183,6 +215,8 @@ func _physics_process(dt: float) -> void:
 		if d.serve:
 			request_serve()
 		if phase == Phase.SUMMARY and phase_time >= AUTOPLAY_SUMMARY_WAIT:
+			open_shop()
+		elif phase == Phase.SHOP and phase_time >= AUTOPLAY_SHOP_WAIT:
 			next_round()
 	tick(dt, hold)
 	if _clock >= _quit_at:
@@ -201,6 +235,8 @@ func _process(_dt: float) -> void:
 ## One fixed step of the whole game. `hold` = DOWN is held this tick.
 func tick(dt: float, hold: bool) -> void:
 	phase_time += dt
+	if phase == Phase.SHOP:
+		return  # the round is over and the bar is hidden
 	if phase == Phase.INTRO or phase == Phase.SUMMARY:
 		hold = false
 	if phase == Phase.INTRO and phase_time >= INTRO_TIME:
