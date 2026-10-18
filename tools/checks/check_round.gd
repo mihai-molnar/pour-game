@@ -455,6 +455,10 @@ func _own_garnishes() -> void:
 
 func _garnish_keys_follow_the_rules() -> void:
 	_fresh()
+	var drink := main.drink
+	main.drink = null  # the sweep never starts a round, but still ticks once before quitting
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "the plain hint before any drink is set")
+	main.drink = drink
 	expect(not main.try_garnish(KEY_UP), "nothing during INTRO")
 	_run(Main.INTRO_TIME + DT)
 	expect(not main.try_garnish(KEY_UP), "nothing before buying ice")

@@ -203,7 +203,7 @@ func is_serving_phase() -> bool:
 ## — while serving, once the glass has landed, if the player owns it and it
 ## isn't on the glass yet. True if it was added.
 func try_garnish(key: Key) -> bool:
-	if not is_serving_phase() or _summary_in >= 0.0 or not glass.visible or glass.is_arriving():
+	if not is_serving_phase() or _summary_in >= 0.0 or not glass.visible or glass.is_arriving() or drink == null:
 		return false
 	for g in drink.garnishes:
 		if g.key == key and GameState.owns_garnish(g):
@@ -214,7 +214,7 @@ func try_garnish(key: Key) -> bool:
 ## The key hint for the current drink, naming the garnishes the player owns for it.
 func hint_text() -> String:
 	var parts: Array[String] = ["HOLD DOWN  pour"]
-	for g in drink.garnishes:
+	for g in drink.garnishes if drink != null else []:
 		if GameState.owns_garnish(g):
 			parts.append("%s  %s" % [OS.get_keycode_string(g.key).to_upper(), g.display_name.to_lower()])
 	parts.append_array(["SPACE  serve", "F1  debug"])
