@@ -39,8 +39,14 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 ## Optional handle polyline (empty for bottles).
 @export var pourer_handle := PackedVector2Array()
 ## The pourer's glass: rgb tints it, alpha is the body's tint strength (the
-## walls get 3× that, capped at 1).
+## walls get 3× that, capped at 0.85; tinted glass also shades the liquid).
 @export var pourer_glass_color := Color(Palette.FROST, 0.1)
+## Corner rounding (px) for drawing the pourer smooth; the physics keeps the sharp shapes.
+@export var pourer_corner_radius := 3.0
+## A label on the body, local and upright (zero size = none).
+@export var pourer_label := Rect2()
+## A foil capsule round the neck, local and upright (zero size = none).
+@export var pourer_foil := Rect2()
 ## "Full" as a share of the pourer interior (a brim-full pitcher would pour at the slightest tilt).
 @export_range(0.1, 0.99) var pourer_full_fraction := 0.9
 @export var spout_dir := Vector2(-1.0, -0.25)

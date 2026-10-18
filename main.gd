@@ -76,6 +76,7 @@ func _ready() -> void:
 	camera.position = CAMERA_CENTER
 	camera.zoom = Vector2.ONE * CAMERA_ZOOM
 	shadows.glass = glass
+	shadows.pourer = pourer
 	summary.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	pourer.landed.connect(_on_landed)

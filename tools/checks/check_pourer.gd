@@ -35,7 +35,7 @@ func run() -> void:
 
 	# The wall tint must not cover the interior (clip_polygons alone returns the
 	# interior as a hole polygon, which fills it with frost).
-	_walls_cover_interior(DrawLayer.wall_polygons(pourer.def.pourer_outer, pourer.interior), pourer.interior, "wall_polygons")
+	_walls_cover_interior(VesselArt.walls(pourer.def.pourer_outer, pourer.interior), pourer.interior, "walls")
 
 	# pour_speed_mult scales the tilt speed (measured before any pouring starts).
 	var base_tilt := _tilt_after_hold(pourer, 0.3)
@@ -78,11 +78,31 @@ func _check_drawable_liquid(pourer: Pourer, water: DrinkDef, wine: DrinkDef) -> 
 		pourer.tilt = c[2]
 		pourer.slosh = c[3]
 		pourer._update_surface()
-		var polys := pourer.liquid_polygons()
-		var drawable := true  # none at all is fine: a sub-pixel amount draws nothing
-		for poly in polys:
-			drawable = drawable and not Geometry2D.triangulate_polygon(poly).is_empty()
-		expect(drawable, "%s at volume %.1f: every liquid polygon can be drawn (%d polygons)" % [c[0].id, c[1], polys.size()])
+		for polys: Array[PackedVector2Array] in [pourer.liquid_polygons(), pourer.drawn_liquid_polygons()]:
+			var drawable := true  # none at all is fine: a sub-pixel amount draws nothing
+			for poly in polys:
+				drawable = drawable and not Geometry2D.triangulate_polygon(poly).is_empty()
+			expect(drawable, "%s at volume %.1f: every liquid polygon can be drawn (%d polygons)" % [c[0].id, c[1], polys.size()])
+	# The drawn (rounded) liquid at a spread of amounts and tilts: always drawable, always inside.
+	for d: DrinkDef in [water, wine]:
+		pourer.setup(d)
+		pourer.place(GLASS_POS + d.pourer_offset)
+		var box := Rect2(pourer.interior[0], Vector2.ZERO)
+		for p in pourer.interior:
+			box = box.expand(p)
+		box = box.grow(0.5)
+		for vol in [0.6, 5.0, 50.0, pourer.full_volume * 0.5, pourer.full_volume]:
+			for t in [0.0, 20.0, 45.0, 80.0, d.max_tilt_deg]:
+				pourer.volume = vol
+				pourer.tilt = deg_to_rad(t)
+				pourer.slosh = 0.0
+				pourer._update_surface()
+				var ok := true
+				for poly in pourer.drawn_liquid_polygons():
+					ok = ok and not Geometry2D.triangulate_polygon(poly).is_empty()
+					for p in poly:
+						ok = ok and box.has_point(p)
+				expect(ok, "%s at %.0f px², tilt %d: drawn liquid triangulates and stays inside" % [d.id, vol, t])
 
 
 func _check_arrival(pourer: Pourer, water: DrinkDef) -> void:

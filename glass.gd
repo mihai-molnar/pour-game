@@ -59,12 +59,14 @@ var _last_vx := 0.0
 var _arrive_t := -1.0  # < 0 when not arriving (covers the slide and the wobble)
 var _pivot := Vector2.ZERO
 
+@onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
 @onready var _front: DrawLayer = $Front
 @onready var _mat := _liquid.material as ShaderMaterial
 
 
 func _ready() -> void:
+	_back.draw_func = _draw_back
 	_liquid.draw_func = _draw_liquid
 	_front.draw_func = _draw_front
 	_last_x = global_position.x
@@ -163,7 +165,7 @@ func _step_arrival(dt: float) -> void:
 
 ## Turns the drawing by `angle` about the arrival pivot (the node stays put).
 func _apply_lean(angle: float) -> void:
-	for layer: Node2D in [_liquid, _front]:
+	for layer: Node2D in [_back, _liquid, _front]:
 		layer.rotation = angle
 		layer.position = _pivot - _pivot.rotated(angle)
 
@@ -397,8 +399,19 @@ func step(dt: float) -> void:
 		else:
 			_drips[i] = d
 
+	_back.queue_redraw()
 	_liquid.queue_redraw()
 	_front.queue_redraw()
+
+
+## Behind the liquid: the glass body's faint frost and a soft dark outline.
+func _draw_back(ci: CanvasItem) -> void:
+	if def == null:
+		return
+	var closed := _drawn_outer.duplicate()
+	closed.append(_drawn_outer[0])
+	ci.draw_colored_polygon(_drawn_outer, Color(Palette.FROST, 0.07))
+	ci.draw_polyline(closed, Color(Palette.INK, 0.35), 0.7, true)
 
 
 func _draw_liquid(ci: CanvasItem) -> void:
@@ -413,10 +426,6 @@ func _draw_front(ci: CanvasItem) -> void:
 	var box := Rect2(_drawn_outer[0], Vector2.ZERO)
 	for p in _drawn_outer:
 		box = box.expand(p)
-	var closed := _drawn_outer.duplicate()
-	closed.append(_drawn_outer[0])
-	ci.draw_colored_polygon(_drawn_outer, Color(Palette.FROST, 0.07))
-	ci.draw_polyline(closed, Color(Palette.INK, 0.35), 0.7, true)
 	for wall in _walls:
 		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, VesselArt.clear_glass_walls())
 

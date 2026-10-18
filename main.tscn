@@ -53,6 +53,9 @@ script = ExtResource("11_shadows")
 position = Vector2(256, 280)
 script = ExtResource("3_glass")
 
+[node name="Back" type="Node2D" parent="Glass"]
+script = ExtResource("7_layer")
+
 [node name="Liquid" type="Node2D" parent="Glass"]
 material = SubResource("ShaderMaterial_glass")
 script = ExtResource("7_layer")
@@ -66,6 +69,9 @@ script = ExtResource("5_stream")
 [node name="Pourer" type="Node2D" parent="."]
 position = Vector2(270, 175)
 script = ExtResource("4_pourer")
+
+[node name="Back" type="Node2D" parent="Pourer"]
+script = ExtResource("7_layer")
 
 [node name="Liquid" type="Node2D" parent="Pourer"]
 material = SubResource("ShaderMaterial_pourer")
