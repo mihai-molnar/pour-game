@@ -252,8 +252,7 @@ func _step_arrival(dt: float) -> void:
 			angle += deg_to_rad(WIGGLE_DEG) * (uncorking / _uncork_time) * sin(uncorking * WIGGLE_FREQ)
 		if uncorking >= _uncork_time - 1e-6:
 			corked = false
-			var m := _mouth()
-			popped.emit(to_global(Vector2(m.x + m.y * 0.5, -2.0)), Vector2(0.0, -CORK_SPEED).rotated(rotation), def.liquid_highlight)
+			popped.emit(to_global(cork_rect().get_center()), Vector2(0.0, -CORK_SPEED).rotated(rotation), def.liquid_highlight)
 	_apply_lean(angle)
 	if not corked and Arrival.done(_arrive_t):
 		_arrive_t = -1.0
@@ -271,6 +270,15 @@ func _apply_lean(angle: float) -> void:
 ## The rest angle (radians); tilt counts from it.
 func _rest() -> float:
 	return deg_to_rad(def.pourer_rest_deg) if def != null else 0.0
+
+
+## The cork in a corked bottle's mouth (local, upright): a touch wider than
+## the mouth, sticking out of the lip about 1.3× the mouth's width, its foot
+## under the lip ring.
+func cork_rect() -> Rect2:
+	var m := _mouth()
+	var top := _bounds(def.pourer_outer).position.y
+	return Rect2(m.x - 0.3, top - 1.0 - m.y * 1.3, m.y + 0.6, m.y * 1.3 + 3.0)
 
 
 ## The interior's top edge — a bottle's mouth — as x = left, y = width.
@@ -434,6 +442,8 @@ func _draw_front(ci: CanvasItem) -> void:
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 20.0, lerpf(inner.position.y, inner.end.y, 0.6), 4.8), Color(Palette.WHITE, 0.25), 0.6)
 	VesselArt.draw_rim_light(ci, _drawn_outer, Color(Palette.WHITE, 0.6), 0.45)
 	var m := _mouth()
+	if corked:
+		VesselArt.draw_cork(ci, cork_rect())
 	if def.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
 		var ring := VesselArt.rounded(_rect_poly(Rect2(m.x - 2.8, box.position.y - 0.8, m.y + 5.6, 3.4)), 1.2)
 		ci.draw_colored_polygon(ring, Color(g.lightened(0.45), 0.8))
@@ -446,10 +456,6 @@ func _draw_front(ci: CanvasItem) -> void:
 		for i in shine.size():
 			shine[i] += Vector2(-0.6, -0.4)
 		ci.draw_polyline(shine, Color(Palette.WHITE, 0.55), 0.6, true)
-	if corked:
-		var cork := VesselArt.rounded(_rect_poly(Rect2(m.x + 0.6, -3.4, m.y - 1.2, 5.4)), 0.8)
-		ci.draw_colored_polygon(cork, Palette.BROWN)
-		ci.draw_line(Vector2(m.x + 1.0, -3.0), Vector2(m.x + m.y - 1.0, -3.0), Palette.TAN, 0.8, true)
 
 
 ## A paper label round the body: cream, shaded toward the edges, thin rules and a small grape emblem.

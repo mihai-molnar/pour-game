@@ -44,9 +44,13 @@ func dust(at: Vector2) -> void:
 			0.3, 0.5, Palette.SAND, 200.0, Kind.DOT)
 
 
+## The width (px) of a popped cork — the same cork the bottle's mouth was showing.
+const CORK_W := 6.6
+
+
 ## A popped cork flying off along `velocity`, plus a little spray of `spray` drops.
 func cork(at: Vector2, velocity: Vector2, spray: Color) -> void:
-	_add(at, velocity, 2.0, 2.0, Palette.BROWN, GRAVITY, Kind.CORK)
+	_add(at, velocity, 2.0, CORK_W, Palette.WHITE, GRAVITY, Kind.CORK)
 	for i in 4:
 		_add(at, velocity.rotated(randf_range(-0.6, 0.6)) * randf_range(0.3, 0.6), 0.4, 0.5, spray, GRAVITY, Kind.DOT)
 
@@ -90,8 +94,7 @@ func _draw() -> void:
 				VesselArt.draw_soft_ellipse(self, b.pos, Vector2.ONE * b.size, Color(c, c.a * 0.7))
 			Kind.DOT:
 				draw_circle(b.pos, b.size, c)
-			Kind.CORK:  # a little capsule tumbling as it flies
+			Kind.CORK:  # the whole cork, tumbling as it flies
 				draw_set_transform(b.pos, b.life * 9.0)
-				draw_colored_polygon(VesselArt.rounded(PackedVector2Array([Vector2(-2, -1.5), Vector2(2, -1.5), Vector2(2, 1.5), Vector2(-2, 1.5)]), 0.8), c)
-				draw_line(Vector2(-2, -1.2), Vector2(-2, 1.2), Color(Palette.TAN, c.a), 0.6, true)
+				VesselArt.draw_cork(self, Rect2(-b.size * 0.5, -b.size * 0.9, b.size, b.size * 1.8), c.a)
 				draw_set_transform(Vector2.ZERO)
