@@ -80,6 +80,9 @@ func _check_wine(glass: Glass, wine: DrinkDef) -> void:
 	expect(glass.bracket_x() <= bulge - 2.0, "wine: the bracket clears the bowl's bulge (%.1f vs %.1f)" % [glass.bracket_x(), bulge])
 	_check_drawn_liquid(glass)
 	expect(_tint_clear(glass), "wine: wall tint polygons leave the bowl clear")
+	var mat := (glass.get_node("Liquid") as CanvasItem).material as ShaderMaterial
+	eq([mat.get_shader_parameter("tint"), mat.get_shader_parameter("absorb"), mat.get_shader_parameter("scatter")],
+		[wine.liquid_color, wine.liquid_absorb, wine.liquid_scatter], "wine: the liquid shader gets wine's look")
 
 
 ## What is drawn must match what is scored: a calm glass's liquid top sits

@@ -86,9 +86,10 @@ func setup(d: DrinkDef) -> void:
 		lo = lo.min(p)
 		hi = hi.max(p)
 	_mat.set_shader_parameter("tint", d.liquid_color)
+	_mat.set_shader_parameter("absorb", d.liquid_absorb)
+	_mat.set_shader_parameter("scatter", d.liquid_scatter)
 	_mat.set_shader_parameter("center_x", (lo.x + hi.x) * 0.5)
 	_mat.set_shader_parameter("half_width", (hi.x - lo.x) * 0.5)
-	_mat.set_shader_parameter("highlight_x", lo.x + 4.0)
 	target = d.fill_fraction * capacity
 	_target_y = level_for(target)
 	reset()
@@ -439,10 +440,11 @@ func _draw_front(ci: CanvasItem) -> void:
 		if surface.size() >= 2:
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.9), 0.45, true)
+	var fizz := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
 	for b in _bubbles:
 		var at := Vector2(b.x, b.y)
-		ci.draw_circle(at, 0.55, Color(Palette.WHITE, 0.18))
-		ci.draw_arc(at, 0.55, 0.0, TAU, 10, Color(Palette.WHITE, 0.6), 0.22, true)
+		ci.draw_circle(at, 0.55, Color(fizz, 0.15))
+		ci.draw_arc(at, 0.55, 0.0, TAU, 10, Color(fizz, 0.5), 0.22, true)
 
 	# Light: streaks down the inside of the left wall, a rim of light on the right, the rim on top.
 	var top := box.position.y

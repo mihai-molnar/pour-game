@@ -16,6 +16,11 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var liquid_color := Color("0099db")
 ## Stream core, sparkles, drips.
 @export var liquid_highlight := Color("2ce8f5")
+## How much of the light behind the liquid it swallows per px of view path
+## (r, g, b): small for water (the bar shows through), large for wine.
+@export var liquid_absorb := Vector3(0.010, 0.004, 0.002)
+## How much liquid_color the liquid gives off by itself (so clear water still reads blue).
+@export_range(0.0, 1.0) var liquid_scatter := 0.35
 
 @export_group("Glass")
 @export var glass_interior := PackedVector2Array()

@@ -96,10 +96,11 @@ func setup(d: DrinkDef) -> void:
 	var box := _bounds(interior)
 	var mat := _liquid.material as ShaderMaterial
 	mat.set_shader_parameter("tint", d.liquid_color)
+	mat.set_shader_parameter("absorb", d.liquid_absorb)
+	mat.set_shader_parameter("scatter", d.liquid_scatter)
 	mat.set_shader_parameter("center_x", box.get_center().x)
 	mat.set_shader_parameter("half_width", box.size.x * 0.5)
 	mat.set_shader_parameter("surface_y", 0.0)
-	mat.set_shader_parameter("highlight_x", box.position.x + 4.0)
 	reset()
 
 

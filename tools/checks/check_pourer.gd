@@ -62,6 +62,11 @@ func run() -> void:
 	_check_arrival(pourer, water)
 	_check_wine(pourer, glass, wine)
 	_check_drawable_liquid(pourer, water, wine)
+	for d: DrinkDef in [water, wine]:
+		pourer.setup(d)
+		var mat := (pourer.get_node("Liquid") as CanvasItem).material as ShaderMaterial
+		eq([mat.get_shader_parameter("tint"), mat.get_shader_parameter("absorb"), mat.get_shader_parameter("scatter")],
+			[d.liquid_color, d.liquid_absorb, d.liquid_scatter], "%s: the pourer's liquid shader gets the drink's look" % d.id)
 
 
 ## Clipping the interior at the surface can leave sub-pixel slivers where the
