@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="DrinkDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://drink_def.gd" id="1_drink"]
+
+[resource]
+script = ExtResource("1_drink")
+id = &"beer"
+display_name = "Beer"
+price = 150
+unlock_round = 3
+liquid_color = Color(0.909804, 0.639216, 0.227451, 1)
+liquid_highlight = Color(1, 0.843137, 0.478431, 1)
+liquid_absorb = Vector3(0.004, 0.012, 0.035)
+liquid_scatter = 0.45
+glass_interior = PackedVector2Array(-8, -14, 8, -14, 9, -20, 10, -28, 12, -38, 15, -50, 18, -62, 20, -74, 21, -86, 21, -94, 20, -102, -20, -102, -21, -94, -21, -86, -20, -74, -18, -62, -15, -50, -12, -38, -10, -28, -9, -20)
+glass_outer = PackedVector2Array(-15, 0, 15, 0, 15, -3, 12, -5, 13, -8, 11, -11, 10.5, -14, 11, -20, 12, -28, 14, -38, 17, -50, 20, -62, 22, -74, 23, -86, 23, -94, 22, -102, -22, -102, -23, -94, -23, -86, -22, -74, -20, -62, -17, -50, -14, -38, -12, -28, -11, -20, -10.5, -14, -11, -11, -13, -8, -12, -5, -15, -3)
+fill_fraction = 0.61
+glass_corner_radius = 3.0
+perfect_coins = 20
+good_coins = 12
+ok_coins = 6
+spill_coins = 12
+pourer_interior = PackedVector2Array(0, 0, 7, 0, 7, 26, 16.5, 40, 16.5, 100, -9.5, 100, -9.5, 40, 0, 26)
+pourer_outer = PackedVector2Array(-2, -1, 9, -1, 9, 25, 18.5, 39, 18.5, 103, -11.5, 103, -11.5, 39, -2, 25)
+pourer_glass_color = Color(0.352941, 0.180392, 0.054902, 0.6)
+pourer_corner_radius = 2.5
+pourer_label = Rect2(-8.5, 52, 24, 34)
+pourer_foil = Rect2(-1.5, 8, 10, 12)
+pourer_full_fraction = 0.911
+spout_dir = Vector2(0, -1)
+pourer_offset = Vector2(8, -118)
+pourer_rest_deg = 55.0
+refill_style = 1
+max_tilt_deg = 100.0
+rest_bounce = 0.0
+pour_tilt_speed_deg = 8.0
+max_flow = 700.0
+stream_speed_k = 3.0

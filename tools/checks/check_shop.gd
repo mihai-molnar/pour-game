@@ -32,6 +32,16 @@ func run() -> void:
 	eq(GameState.take_new_drink(), null, "a new drink switched off doesn't open the round")
 	expect(GameState.new_drinks.is_empty(), "...and is no longer new")
 	expect(not GameState.set_on_menu(load("res://drinks/wine.tres").duplicate(), true), "an unowned drink can't go on the menu")
+	var beer: DrinkDef = GameState.BEER
+	GameState.reset_session(1)
+	GameState.coins = 500
+	GameState.round_number = 2
+	expect(not GameState.is_unlocked(beer) and not GameState.buy_drink(beer) and GameState.coins == 500, "beer is locked before round 3, even with the coins")
+	GameState.round_number = 0
+	expect(not GameState.buy_drink(beer), "...and under --shop before any round")
+	GameState.round_number = 3
+	expect(GameState.is_unlocked(beer) and GameState.buy_drink(beer) and GameState.coins == 350, "after round 3 it sells for 150")
+	expect(GameState.new_drinks == [beer] and GameState.menu.has(beer), "bought beer is new and on the menu")
 	GameState.reset_session(1)
 	expect(GameState.owned_drinks == [water] and GameState.menu == [water] and GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(),
 		"reset_session clears purchases and the menu")
@@ -67,6 +77,17 @@ func run() -> void:
 	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [water, wine], "MENU: a line per owned drink")
 	eq(shop.blacked_out_lines(), 0, "MENU: only what you own")
 	expect(shop.page.get_child_count() >= shop.lines.size() and shop.lines[0].get_parent() == shop.page, "the lines sit on the page")
+	GameState.round_number = 3
+	shop.show_tab(Shop.Tab.DRINKS)
+	shop._finish_turn()
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [wine, GameState.BEER], "after round 3, DRINKS: wine and beer")
+	eq(shop.blacked_out_lines(), 4, "...then 4 drinks to come")
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._finish_turn()
+	eq(shop.blacked_out_lines(), 7, "UPGRADES: 2 water, 3 wine and 2 beer lines blacked out")
+	GameState.round_number = 1
+	shop.show_tab(Shop.Tab.MENU)
+	shop._finish_turn()
 	expect(shop.toggle(water) and not GameState.menu.has(water), "water switched off")
 	expect(not shop.toggle(wine) and shop.lines[1].toggle_button.disabled and shop.lines[1].note.visible, "the last drink on can't be switched off")
 	var smallest := 99

@@ -41,6 +41,8 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export_group("Shop")
 ## Coins it costs in the shop; 0 = owned from the start.
 @export var price := 0
+## On sale in a shop opened once this many rounds have been played (0 = from the start).
+@export var unlock_round := 0
 ## What can be added to its glass while serving it (each bought once in the shop).
 @export var garnishes: Array[GarnishDef] = []
 

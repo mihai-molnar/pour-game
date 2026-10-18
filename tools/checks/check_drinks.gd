@@ -21,7 +21,8 @@ func run() -> void:
 	expect(wine.id == &"wine", "GameState.WINE is wine")
 	expect(GameState.menu.size() == 1 and GameState.menu[0] == water, "menu starts as [water]")
 	expect(GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(), "nothing bought yet")
-	expect(GameState.DRINKS.size() == 2 and GameState.DRINKS[0] == water and GameState.DRINKS[1] == wine, "the catalog is water, wine")
+	var beer: DrinkDef = GameState.BEER
+	expect(GameState.DRINKS == [water, wine, beer], "the catalog is water, wine, beer")
 	eq([water.price, wine.price], [0, 80], "water is free, wine costs 80")
 	eq(water.garnishes.map(func(g: GarnishDef) -> StringName: return g.id), [&"ice", &"lime"], "water's garnishes are ice and lime")
 	eq(wine.garnishes.size(), 0, "wine has none yet")
@@ -53,7 +54,8 @@ func run() -> void:
 		if file.ends_with(".tres"):
 			_check_drink(load("res://drinks/" + file), main.glass)
 			checked += 1
-	expect(checked >= 2, "found water and wine")
+	expect(checked >= 3, "found water, wine and beer")
+	_check_beer(main, water, wine, beer)
 
 
 func _check_drink(d: DrinkDef, glass: Glass) -> void:
@@ -90,3 +92,19 @@ func _inside(inner: PackedVector2Array, outer: PackedVector2Array, what: String)
 	c /= inner.size()
 	for p in inner:
 		expect(Geometry2D.is_point_in_polygon(p.lerp(c, 0.05), outer), what)
+
+
+## Beer: its price and unlock, its payout, its glass's room for a head and a
+## bottle holding a little more than the glass needs.
+func _check_beer(main: Node, water: DrinkDef, wine: DrinkDef, beer: DrinkDef) -> void:
+	eq([beer.id, beer.display_name, beer.price, beer.unlock_round], [&"beer", "Beer", 150, 3], "beer: 150 coins, after round 3")
+	eq([water.unlock_round, wine.unlock_round], [0, 0], "water and wine are never locked")
+	expect(beer.perfect_coins > wine.perfect_coins and beer.good_coins > wine.good_coins and beer.ok_coins > wine.ok_coins, "beer pays more than wine at every step")
+	eq(beer.garnishes.size(), 0, "beer has no garnishes yet")
+	eq(beer.refill_style, DrinkDef.RefillStyle.NEW_BOTTLE, "beer comes in bottles")
+	main.glass.setup(beer)
+	expect(main.glass.line_y() - float(main.glass._y0) >= 20.0, "two fingers (20 px) fit above beer's line (%.1f)" % (main.glass.line_y() - main.glass._y0))
+	main.pourer.setup(beer)
+	near(main.pourer.full_volume / main.glass.target, 1.05, "a beer bottle holds 1.05 x the target", 0.0105)
+	var at_rest := Transform2D(-deg_to_rad(beer.pourer_rest_deg), beer.pourer_offset) * beer.pourer_outer
+	expect(Geometry2D.intersect_polygons(at_rest, beer.glass_outer).is_empty(), "the bottle at rest clears the glass")

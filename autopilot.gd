@@ -4,7 +4,7 @@ extends RefCounted
 ## the garnishes it owns as soon as a glass lands, pours until the glass (plus
 ## liquid in the air, plus the ice) nears the line, releases early to allow for
 ## the overshoot, then serves once everything has landed. In the shop it buys
-## ice, lime and wine as soon as it can afford them.
+## ice, lime, wine and beer as soon as it can afford them.
 
 ## Release DOWN when this share of the target is in the glass or the air, per
 ## drink id — the lower the line, the bigger the overshoot's share of the target.
@@ -13,7 +13,7 @@ var _released := false
 
 
 ## What to buy, in order, whenever it can be afforded.
-const SHOPPING := [&"ice", &"lime", &"wine"]
+const SHOPPING := [&"ice", &"lime", &"wine", &"beer"]
 
 
 ## This tick's input: "hold" (DOWN), "serve" (Space), "keys" (garnish keys to press).

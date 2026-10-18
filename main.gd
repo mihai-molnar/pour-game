@@ -14,6 +14,7 @@ extends Node2D
 ##   --seed=N             seed the drink picks so a run repeats
 ##   --coins=N            start the session with N coins
 ##   --shop               open the shop at startup (round 1 comes after it)
+##   --round=N            start as if N rounds had been played (with --shop: the shop after round N)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
 ##   --quit=S             quit after S seconds
 
@@ -108,10 +109,12 @@ func _ready() -> void:
 	_shot_every = float(args.get("shot-every", "1.0"))
 	if args.has("quit"):
 		_quit_at = float(args["quit"])
+	var played := int(args.get("round", "0"))
 	if args.has("shop"):
-		GameState.round_number = 0  # the round after this shop is round 1
+		GameState.round_number = played  # the round after this shop is played + 1
 		open_shop()
 	else:
+		GameState.round_number = played + 1
 		start_round()
 
 
