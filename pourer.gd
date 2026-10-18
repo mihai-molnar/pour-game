@@ -157,6 +157,26 @@ func center_global() -> Vector2:
 	return to_global(_bounds(def.pourer_outer).get_center())
 
 
+## Where the pourer of `d` has its middle when held at rest with its spout at
+## `lip` (world): the centre of its outline's box, turned to its rest angle.
+static func rest_center(d: DrinkDef, lip: Vector2) -> Vector2:
+	return Transform2D(-deg_to_rad(d.pourer_rest_deg), lip) * _bounds(d.pourer_outer).get_center()
+
+
+## How far a refill has got, 0 to 1 (1 when not refilling): 0 while it swings
+## back upright, then the fill (a pitcher) or the new bottle's arrival and
+## uncork (a bottle) over its time.
+func refill_progress() -> float:
+	if not refilling:
+		return 1.0
+	if _refill_t < 0.0:
+		return 0.0
+	if def.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
+		return clampf(_arrive_t / (Arrival.ARRIVE_TIME + _uncork_time), 0.0, 1.0)
+	var duration: float = GameState.stats.refill_time
+	return clampf(_refill_t / duration, 0.0, 1.0) if duration > 0.0 else 1.0
+
+
 ## Advances one physics tick. Returns the volume that left the spout this tick.
 func step(dt: float, hold: bool) -> float:
 	if not refilling and volume < full_volume * EMPTY_SHARE:
