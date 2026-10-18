@@ -77,7 +77,7 @@ func _init(for_item: Resource, title: String, description: String, picture: Call
 	_buy_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_buy_hint.visible = false
 
-	badge = _label(Vector2(SIZE.x - 52.0, 0), "OWNED", MenuArt.title_font(700, 1), 10, Palette.STAMP)
+	badge = _label(Vector2(SIZE.x - 50.0, -3), "OWNED", MenuArt.title_font(700, 1), 10, Palette.STAMP)
 	badge.size = Vector2(50, 15)
 	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

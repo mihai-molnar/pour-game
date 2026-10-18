@@ -1,7 +1,7 @@
 # Pour Game — The Shop as a Drinks Menu, and Ice Physics
 
 Date: 2026-10-18
-Status: Approved (2026-10-18: "plan and build it")
+Status: Approved (2026-10-18: "plan and build it"); implemented 2026-10-18, awaiting playtest — plan `docs/superpowers/plans/2026-10-18-menu-shop-and-ice-physics.md`
 
 ## Overview
 
