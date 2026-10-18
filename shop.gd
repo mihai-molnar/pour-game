@@ -309,9 +309,9 @@ func _arrange_tabs() -> void:
 	for i in _tabs.size():
 		var b := _tabs[i]
 		if i == tab:
-			_root.move_child(b, _paper.get_index() + 1)
-		else:
-			_root.move_child(b, _paper.get_index())
+			_root.move_child(b, -1)
+		elif b.get_index() > _paper.get_index():
+			_root.move_child(b, _paper.get_index())  # lands just behind the page
 		b.get_child(0).queue_redraw()
 
 

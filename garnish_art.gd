@@ -1,6 +1,6 @@
 class_name GarnishArt
 extends RefCounted
-## Drawing for garnishes, shared by the glass and the shop cards: ice cubes
+## Drawing for garnishes in the glass (the shop menu reuses the lime shapes): ice cubes
 ## (a frosty see-through body, drawn behind a glass's liquid, and bright edges
 ## drawn in front) and a lime wedge slit onto a rim. Static helpers only; all
 ## coordinates are the caller's local px.

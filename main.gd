@@ -128,6 +128,7 @@ func start_round() -> void:
 	_shop_in = -1.0
 	_idle = 0.0
 	stream.clear()
+	effects.clear()  # bits frozen while the shop was open don't replay
 	var fresh := GameState.take_new_drink()
 	_force_next = fresh
 	drink = _pick_drink()

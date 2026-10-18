@@ -101,6 +101,15 @@ func run() -> void:
 	shop.close()
 	shop.open()
 	expect(not shop.is_turning(), "opening the shop doesn't turn a page")
+	for t in [Shop.Tab.DRINKS, Shop.Tab.MENU, Shop.Tab.UPGRADES, Shop.Tab.MENU]:
+		shop.show_tab(t)
+		shop._finish_turn()
+		shop.open()
+		var stacked := true
+		for i in shop._tabs.size():
+			var in_front: bool = shop._tabs[i].get_index() > shop._paper.get_index()
+			stacked = stacked and in_front == (i == shop.tab)
+		expect(stacked, "after turning to %s, only its tab sits in front of the page" % Shop.TAB_NAMES[t])
 	shop.free()
 
 	# Menu art: printed-menu illustrations and marker bars, all drawable.

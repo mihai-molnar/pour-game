@@ -62,6 +62,12 @@ func cork(at: Vector2, velocity: Vector2, spray: Color) -> void:
 		_add(at, velocity.rotated(randf_range(-0.6, 0.6)) * randf_range(0.3, 0.6), 0.4, 0.5, spray, GRAVITY, Kind.DOT)
 
 
+## Drops every bit (a new round starts clean).
+func clear() -> void:
+	_bits.clear()
+	queue_redraw()
+
+
 func count() -> int:
 	return _bits.size()
 

@@ -39,7 +39,7 @@ func decide(main: Main) -> Dictionary:
 	return out
 
 
-## Buys what it can in SHOPPING order, through the shop (so its cards show it).
+## Buys what it can in SHOPPING order, through the shop (so its menu shows it).
 func shop(main: Main) -> void:
 	for id in SHOPPING:
 		for d: DrinkDef in GameState.DRINKS:

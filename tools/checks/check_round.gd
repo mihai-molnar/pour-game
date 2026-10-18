@@ -114,7 +114,7 @@ func _full_round_with_autopilot() -> void:
 		if served_at_time_up < 0 and main.time_left <= 0.0:
 			served_at_time_up = main.results.size()
 		t += DT
-	expect(main.phase == Main.Phase.SHOP, "the round reaches SUMMARY")
+	expect(main.phase == Main.Phase.SHOP, "the round ends in the shop")
 	expect(main.results.size() >= 4, "the autopilot serves at least 4 glasses (served %d)" % main.results.size())
 	expect(main.results.size() - served_at_time_up <= 1, "at most one glass is served after 0:00")
 	var total := 0
@@ -222,11 +222,17 @@ func _time_up_untouched_glass() -> void:
 	_to_playing()
 	main.time_left = 0.5
 	_run(0.6)
-	expect(main.phase == Main.Phase.SHOP, "0:00 with an untouched glass goes straight to SUMMARY")
+	expect(main.phase == Main.Phase.SHOP, "0:00 with an untouched glass goes straight to the shop")
 	expect(main.results.is_empty(), "nothing is scored")
 
 
 func _time_up_mid_swap() -> void:
+	_to_playing()
+	_pour_until_swap()
+	main.time_left = DT * 0.5
+	main.tick(DT, false)
+	main.next_round()
+	eq(main.effects.count(), 0, "a puff left over from the last serve doesn't replay in the next round")
 	_to_playing()
 	_pour_until_swap()
 	main.time_left = DT * 0.5
@@ -431,7 +437,7 @@ func _mixed_round_with_autopilot() -> void:
 	var count := {}
 	for r in main.results:
 		count[r.drink] = count.get(r.drink, 0) + 1
-	expect(main.phase == Main.Phase.SHOP, "the mixed round reaches SUMMARY")
+	expect(main.phase == Main.Phase.SHOP, "the mixed round ends in the shop")
 	expect(main.results.size() >= 4, "the autopilot serves at least 4 glasses in a mixed round (%d)" % main.results.size())
 	expect(count.has(&"wine") and count.has(&"water"), "round 2 serves both drinks (%s)" % count)
 	var good := 0
