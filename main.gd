@@ -1,20 +1,22 @@
 class_name Main
 extends Node2D
-## The round loop: INTRO → PLAYING → LAST_CALL → SUMMARY, each glass a random
-## drink you own (see docs/superpowers/specs/2026-10-15-round-loop-design.md
-## and 2026-10-15-second-drink-design.md). Glasses and pourers arrive by
+## The round loop: INTRO → PLAYING → LAST_CALL → SUMMARY → SHOP, each glass a
+## random drink from the menu (see docs/superpowers/specs/2026-10-15-round-loop-design.md,
+## 2026-10-15-second-drink-design.md and 2026-10-18-upgrade-shop-design.md). Glasses and pourers arrive by
 ## sliding in. All round logic advances only in tick(dt, hold), so check
 ## scripts can fast-forward it headless (`manual = true`); tweens are used for
 ## HUD visuals only.
 ##
 ## Dev flags (after `--`):
 ##   --sweep[=drink_id]   headless tuning table for that drink (default water), pourer full and half full, then quit
-##   --autoplay           the Autopilot plays: pours, serves, starts the next round
+##   --autoplay           the Autopilot plays: pours, serves, visits the shop, starts the next round
 ##   --seed=N             seed the drink picks so a run repeats
+##   --coins=N            start the session with N coins
+##   --shop               open the shop at startup (round 1 comes after it)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
 ##   --quit=S             quit after S seconds
 
-enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY }
+enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY, SHOP }
 
 const GLASS_POS := Vector2(256, 280)
 ## The static camera: the world point at the screen centre, and how much closer
@@ -34,7 +36,8 @@ const ACTIVE_SHARE := 0.01
 ## Result popups float this far above the glass's rim (world px).
 const POPUP_ABOVE_RIM := 14.0
 const AUTOPLAY_SUMMARY_WAIT := 1.5
-const HINT := "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug"
+const AUTOPLAY_SHOP_WAIT := 1.5
+const HINT_SEP := "   ·   "
 
 @onready var glass: Glass = $Glass
 @onready var pourer: Pourer = $Pourer
@@ -42,6 +45,7 @@ const HINT := "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug"
 @onready var effects: Effects = $Effects
 @onready var hud: Hud = $Hud
 @onready var summary: RoundSummary = $RoundSummary
+@onready var shop: Shop = $Shop
 @onready var camera: Camera2D = $Camera
 @onready var shadows: Shadows = $Shadows
 @onready var reflection: Reflection = $Reflection
@@ -62,7 +66,7 @@ var results: Array[Dictionary] = []
 
 var _serve_queued := false
 var _summary_in := -1.0  # >= 0 while the last-call glass's puff plays before the summary
-var _force_next: DrinkDef  # the next glass's drink when it isn't random (a just-unlocked drink)
+var _force_next: DrinkDef  # the next glass's drink when it isn't random (a just-bought drink)
 var _idle := 0.0
 var _autopilot: Autopilot
 var _clock := 0.0
@@ -78,8 +82,10 @@ func _ready() -> void:
 	shadows.pourer = pourer
 	reflection.glass = glass
 	reflection.pourer = pourer
-	summary.next_pressed.connect(next_round)
+	summary.next_pressed.connect(open_shop)
+	shop.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
+	glass.garnish_landed.connect(_on_garnish_landed)
 	pourer.landed.connect(_on_landed)
 	pourer.vanished.connect(effects.puff)
 	pourer.popped.connect(effects.cork)
@@ -90,13 +96,20 @@ func _ready() -> void:
 		_sweep(args["sweep"])
 		get_tree().quit()
 		return
+	if args.has("coins"):
+		GameState.coins = int(args["coins"])
 	if args.has("autoplay"):
 		_autopilot = Autopilot.new()
 	_shot_prefix = args.get("shots", "")
 	_shot_every = float(args.get("shot-every", "1.0"))
 	if args.has("quit"):
 		_quit_at = float(args["quit"])
-	start_round()
+	if args.has("shop"):
+		GameState.round_number = 0  # the round after this shop is round 1
+		_enter(Phase.SUMMARY)
+		open_shop()
+	else:
+		start_round()
 
 
 func _parse_args() -> Dictionary:
@@ -118,33 +131,53 @@ func start_round() -> void:
 	_summary_in = -1.0
 	_idle = 0.0
 	stream.clear()
-	var unlocked := GameState.unlock_for_round(GameState.round_number)
-	_force_next = unlocked
+	var fresh := GameState.take_new_drink()
+	_force_next = fresh
 	drink = _pick_drink()
 	stream.set_drink(drink)
 	glass.arrive(drink, GLASS_POS)
 	pourer.arrive(drink, GLASS_POS + drink.pourer_offset)
 	summary.hide_results()
-	hud.show_banner(Hud.round_banner(GameState.round_number, unlocked), INTRO_TIME)
+	hud.show_banner(Hud.round_banner(GameState.round_number, fresh), INTRO_TIME)
 	hud.set_streak(1.0, false)  # a new round's x1 isn't a broken streak
 	_refresh_hud()
 
 
-func next_round() -> void:
+## From the summary to the shop: the bar and the HUD hide while it is open.
+func open_shop() -> void:
 	if phase != Phase.SUMMARY:
 		return
+	_enter(Phase.SHOP)
+	summary.hide_results()
+	_show_world(false)
+	shop.open()
+
+
+## From the shop to the next round.
+func next_round() -> void:
+	if phase != Phase.SHOP:
+		return
+	shop.close()
+	_show_world(true)
 	GameState.round_number += 1
 	start_round()
 
 
-## The next glass's drink: a just-unlocked drink first, otherwise any owned drink.
+## Shows or hides the bar (this node's canvas items) and the HUD; the summary
+## and the shop are layers of their own.
+func _show_world(on: bool) -> void:
+	visible = on
+	hud.visible = on
+
+
+## The next glass's drink: a just-bought drink first, otherwise any drink on the menu.
 func _pick_drink() -> DrinkDef:
 	if _force_next != null:
 		var d := _force_next
 		_force_next = null
 		return d
-	var owned := GameState.owned_drinks
-	return owned[GameState.rng.randi_range(0, owned.size() - 1)]
+	var menu := GameState.menu
+	return menu[GameState.rng.randi_range(0, menu.size() - 1)]
 
 
 ## The world rect the camera shows.
@@ -166,6 +199,28 @@ func is_serving_phase() -> bool:
 	return phase == Phase.PLAYING or phase == Phase.LAST_CALL
 
 
+## Adds the current drink's garnish for `key` (UP ice, LEFT lime) to the glass
+## — while serving, once the glass has landed, if the player owns it and it
+## isn't on the glass yet. True if it was added.
+func try_garnish(key: Key) -> bool:
+	if not is_serving_phase() or _summary_in >= 0.0 or not glass.visible or glass.is_arriving() or drink == null:
+		return false
+	for g in drink.garnishes:
+		if g.key == key and GameState.owns_garnish(g):
+			return glass.add_garnish(g)
+	return false
+
+
+## The key hint for the current drink, naming the garnishes the player owns for it.
+func hint_text() -> String:
+	var parts: Array[String] = ["HOLD DOWN  pour"]
+	for g in drink.garnishes if drink != null else []:
+		if GameState.owns_garnish(g):
+			parts.append("%s  %s" % [OS.get_keycode_string(g.key).to_upper(), g.display_name.to_lower()])
+	parts.append_array(["SPACE  serve", "F1  debug"])
+	return HINT_SEP.join(parts)
+
+
 func request_serve() -> void:
 	if not is_serving_phase() or is_swapping() or pourer.is_busy():
 		return
@@ -180,9 +235,14 @@ func _physics_process(dt: float) -> void:
 	if _autopilot != null:
 		var d := _autopilot.decide(self)
 		hold = d.hold
+		for k in d.keys:
+			try_garnish(k)
 		if d.serve:
 			request_serve()
 		if phase == Phase.SUMMARY and phase_time >= AUTOPLAY_SUMMARY_WAIT:
+			open_shop()
+		elif phase == Phase.SHOP and phase_time >= AUTOPLAY_SHOP_WAIT:
+			_autopilot.shop(self)
 			next_round()
 	tick(dt, hold)
 	if _clock >= _quit_at:
@@ -201,6 +261,8 @@ func _process(_dt: float) -> void:
 ## One fixed step of the whole game. `hold` = DOWN is held this tick.
 func tick(dt: float, hold: bool) -> void:
 	phase_time += dt
+	if phase == Phase.SHOP:
+		return  # the round is over and the bar is hidden
 	if phase == Phase.INTRO or phase == Phase.SUMMARY:
 		hold = false
 	if phase == Phase.INTRO and phase_time >= INTRO_TIME:
@@ -218,10 +280,10 @@ func tick(dt: float, hold: bool) -> void:
 		time_left = maxf(time_left - dt, 0.0)
 		if time_left <= 0.0:
 			_on_time_up()
-	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty():
+	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy():
 		_serve()
 	if phase == Phase.LAST_CALL and not is_swapping():
-		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty():
+		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty() or glass.garnish_busy():
 			_idle = 0.0
 		else:
 			_idle += dt
@@ -267,7 +329,7 @@ func _serve() -> void:
 			_finish_round()
 		return
 	var error := (glass.volume - glass.target) / glass.target
-	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats)
+	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats, glass.garnishes)
 	r.coins = maxi(r.coins, -GameState.coins)  # a spill can't take the total below 0
 	r["drink"] = drink.id
 	streak = r.streak
@@ -293,6 +355,12 @@ func _serve() -> void:
 	glass.arrive(drink, GLASS_POS)
 
 
+## Ice landing in liquid splashes.
+func _on_garnish_landed(g: GarnishDef, at: Vector2) -> void:
+	if g.kind == GarnishDef.Kind.ICE and glass.volume >= 0.5:
+		effects.splash(at, drink.liquid_highlight)
+
+
 ## Dust only where an arrival lands on the counter (a held bottle lands in mid-air).
 func _on_landed(at: Vector2) -> void:
 	if at.y >= GLASS_POS.y - 1.0:
@@ -312,6 +380,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	match key.physical_keycode:
 		KEY_SPACE:
 			request_serve()
+		KEY_UP, KEY_LEFT:
+			try_garnish(key.physical_keycode)
 		KEY_F1:
 			hud.toggle_debug()
 		KEY_ESCAPE:
@@ -322,7 +392,7 @@ func _refresh_hud() -> void:
 	hud.set_time(time_left)
 	hud.set_coins(GameState.coins)
 	hud.set_streak(Scoring.multiplier(streak, GameState.stats))
-	var hint := HINT
+	var hint := hint_text()
 	if _serve_queued:
 		hint = "SERVING..."
 	elif pourer.refilling:
@@ -330,11 +400,14 @@ func _refresh_hud() -> void:
 	hud.set_hint(hint)
 	if hud.is_debug_visible():
 		var err := (glass.volume - glass.target) / glass.target * 100.0
-		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d  PHASE %s" % [
+		var extras: Array[String] = []
+		for g in glass.garnishes:
+			extras.append(String(g.id))
+		hud.set_debug("TILT %3d  FLOW %4d\nJUG  %4d/%d\nGLASS %4d/%d  %+.1f%%\nIN AIR %d  PHASE %s\nGARNISH %s" % [
 			roundi(rad_to_deg(pourer.tilt)), roundi(pourer.flow),
 			roundi(pourer.volume), roundi(pourer.full_volume),
 			roundi(glass.volume), roundi(glass.target), err,
-			stream.parcel_count(), Phase.keys()[phase],
+			stream.parcel_count(), Phase.keys()[phase], ", ".join(extras) if not extras.is_empty() else "-",
 		])
 
 

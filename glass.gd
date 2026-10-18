@@ -10,7 +10,9 @@ extends Node2D
 ## It is drawn smooth from rounded copies of the DrinkDef shapes.
 ## A new glass arrives by sliding in from the left (arrive()); the lean only
 ## turns the Liquid and Front layers, never this node, so landing liquid and
-## the rim/opening helpers never see it.
+## the rim/opening helpers never see it. It holds the garnishes added while it
+## is served: ice falls in and takes up room (surface_level, max_liquid — what
+## is drawn and scored), a lime wedge drops onto the left rim.
 
 @export_group("Waves")
 @export var wave_speed := 40.0
@@ -24,9 +26,24 @@ extends Node2D
 
 ## Emitted when an arrival stops sliding; `at` = the foot corner it tips over (global).
 signal landed(at: Vector2)
+## Emitted when a garnish lands in or on the glass; `at` = where (global).
+signal garnish_landed(g: GarnishDef, at: Vector2)
 
 ## Where an arriving glass starts: fully off-screen left.
 const OFFSCREEN_X := -40.0
+## Seconds from adding ice until it lands in the glass, and the lime on the rim.
+const ICE_FALL_TIME := 0.35
+const LIME_DROP_TIME := 0.25
+## Where falling ice starts (local y, just above the camera's view).
+const ICE_DROP_Y := -215.0
+## How far the lime drops onto the rim (px).
+const LIME_DROP_PX := 14.0
+## The lime wedge: radius (px) and turn (rad; peel up and out to the left).
+const LIME_RADIUS := 9.0
+const LIME_ANGLE := -0.7
+## Per cube: x nudge (px), resting tilt (rad), tumble while falling (rad), how
+## much deeper it floats (px) — so the cubes don't line up like soldiers.
+const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4), Vector4(0.2, -0.05, 1.9, 0.9)]
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -58,6 +75,13 @@ var _last_x := 0.0
 var _last_vx := 0.0
 var _arrive_t := -1.0  # < 0 when not arriving (covers the slide and the wobble)
 var _pivot := Vector2.ZERO
+## The garnishes added to this glass, in order (landed or still dropping).
+var garnishes: Array[GarnishDef] = []
+## Draw the scoring band and the fill line (previews in the shop turn them off).
+var show_marks := true
+var _garnish_t: Array[float] = []  # seconds since each garnish was added
+var _floor_y := 0.0  # local y of the interior's floor
+var _clock := 0.0  # visual time, for the cubes' drift
 
 @onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
@@ -104,6 +128,100 @@ func reset() -> void:
 	_wave_v.fill(0.0)
 	_bubbles.clear()
 	_drips.clear()
+	garnishes.clear()
+	_garnish_t.clear()
+
+
+## Adds a garnish: ice starts falling, the lime starts dropping onto the rim.
+## False if it is already on this glass.
+func add_garnish(g: GarnishDef) -> bool:
+	if garnishes.has(g):
+		return false
+	garnishes.append(g)
+	_garnish_t.append(0.0)
+	return true
+
+
+func has_garnish(id: StringName) -> bool:
+	for g in garnishes:
+		if g.id == id:
+			return true
+	return false
+
+
+## True while a garnish is still falling or dropping (a serve waits for it).
+func garnish_busy() -> bool:
+	for i in garnishes.size():
+		if _garnish_t[i] < _drop_time(garnishes[i]):
+			return true
+	return false
+
+
+static func _drop_time(g: GarnishDef) -> float:
+	return ICE_FALL_TIME if g.kind == GarnishDef.Kind.ICE else LIME_DROP_TIME
+
+
+## The ice that has landed in the glass (null if none).
+func _ice() -> GarnishDef:
+	for i in garnishes.size():
+		if garnishes[i].kind == GarnishDef.Kind.ICE and _garnish_t[i] >= ICE_FALL_TIME:
+			return garnishes[i]
+	return null
+
+
+## Local y of the calm surface holding `liquid` with whatever ice has landed:
+## the cubes stand on the floor in shallow liquid (it fills the gaps around
+## them) and float once it is deep enough, a float_share of them under the
+## surface. Without ice it is level_for(liquid).
+func surface_level(liquid: float) -> float:
+	var ice := _ice()
+	if ice == null:
+		return level_for(liquid)
+	var cubes_w := ice.cube_count * ice.cube_size
+	var sub := ice.float_share * ice.cube_size
+	var remaining := liquid
+	for r in range(_row_area.size() - 1, -1, -1):
+		var a := float(_row_area[r])
+		if a == 0.0:
+			continue
+		# The row in depths above the floor, split where the cubes start to float.
+		var d0 := _floor_y - (_y0 + r + 1)
+		var split := clampf(sub, d0, d0 + 1.0)
+		for piece: Vector3 in [Vector3(d0, split, maxf(a - cubes_w, 0.5)), Vector3(split, d0 + 1.0, a)]:
+			var room := (piece.y - piece.x) * piece.z
+			if room <= 0.0:
+				continue
+			if remaining <= room:
+				return _floor_y - (piece.x + remaining / piece.z)
+			remaining -= room
+	return float(_y0)
+
+
+## How much area the landed ice takes up below the surface holding `liquid`.
+func displaced(liquid: float) -> float:
+	var ice := _ice()
+	if ice == null:
+		return 0.0
+	var depth := _floor_y - surface_level(liquid)
+	return ice.cube_count * ice.cube_size * minf(depth, ice.float_share * ice.cube_size)
+
+
+## The most liquid the glass holds before it spills (less with ice in it).
+func max_liquid() -> float:
+	var ice := _ice()
+	if ice == null:
+		return capacity
+	var cubes_w := ice.cube_count * ice.cube_size
+	var sub := ice.float_share * ice.cube_size
+	var room := 0.0
+	for r in _row_area.size():
+		var a := float(_row_area[r])
+		if a == 0.0:
+			continue
+		var d0 := _floor_y - (_y0 + r + 1)
+		var split := clampf(sub, d0, d0 + 1.0)
+		room += (split - d0) * maxf(a - cubes_w, 0.5) + (d0 + 1.0 - split) * a
+	return room
 
 
 ## Sets the glass up for `d` (empty), puts it off-screen left and starts
@@ -205,6 +323,9 @@ func _rasterize() -> void:
 				capacity += 1.0
 		_col_top[c] = top
 		_col_bottom[c] = bottom
+	_floor_y = -INF
+	for c in cols:
+		_floor_y = maxf(_floor_y, float(_col_bottom[c]))
 
 
 ## Local y of the calm surface holding `vol`.
@@ -224,10 +345,10 @@ func target_y() -> float:
 	return _target_y
 
 
-## How many pixel rows the settled surface holding `vol` sits from the fill
-## line, as drawn (waves don't count).
+## How many pixel rows the settled surface holding `vol` (and any ice) sits
+## from the fill line, as drawn (waves don't count).
 func rows_from_line(vol: float) -> int:
-	return absi(roundi(level_for(vol)) - roundi(_target_y))
+	return absi(roundi(surface_level(vol)) - roundi(_target_y))
 
 
 ## Local y the fill line is drawn on: the target's row, which is what
@@ -332,11 +453,7 @@ func surface_y_world_at(x_world: float) -> float:
 
 func receive(x_world: float, vol: float, speed: float) -> void:
 	volume += vol
-	if volume > capacity:
-		spilled += volume - capacity
-		volume = capacity
-		if _drips.size() < 30:
-			_drips.append(Vector3(1.0 if randf() < 0.5 else -1.0, float(_y0), randf_range(30.0, 60.0)))
+	_overflow()
 	var c := _col(x_world)
 	var kick := vol * speed * impact_gain
 	_wave_v[c] -= kick
@@ -354,9 +471,39 @@ func receive(x_world: float, vol: float, speed: float) -> void:
 			_bubbles.append(Vector3(float(_x0 + bc) + 0.5, y, randf_range(8.0, 22.0)))
 
 
+## Liquid beyond max_liquid() spills over the rim and runs down the outside.
+func _overflow() -> void:
+	var room := max_liquid()
+	if volume > room:
+		spilled += volume - room
+		volume = room
+		if _drips.size() < 30:
+			_drips.append(Vector3(1.0 if randf() < 0.5 else -1.0, float(_y0), randf_range(30.0, 60.0)))
+
+
+func _step_garnishes(dt: float) -> void:
+	_clock += dt
+	for i in garnishes.size():
+		var g := garnishes[i]
+		var was := _garnish_t[i]
+		_garnish_t[i] += dt
+		if was < _drop_time(g) and _garnish_t[i] >= _drop_time(g):
+			if g.kind == GarnishDef.Kind.ICE:
+				_overflow()
+				if volume >= 0.5:  # a splash: the cubes knock the surface down
+					for pose in _cube_poses(g):
+						var c := clampi(floori(pose.x) - _x0, 0, _wave_v.size() - 1)
+						for k in range(maxi(c - 3, 0), mini(c + 4, _wave_v.size())):
+							_wave_v[k] -= 9.0
+				garnish_landed.emit(g, to_global(Vector2(0.0, surface_level(volume))))
+			else:
+				garnish_landed.emit(g, to_global(_lime_slit()))
+
+
 func step(dt: float) -> void:
 	_step_arrival(dt)
-	_level = level_for(volume)
+	_step_garnishes(dt)
+	_level = surface_level(volume)
 	_mat.set_shader_parameter("surface_y", _level)
 
 	var vx := (global_position.x - _last_x) / dt
@@ -404,7 +551,54 @@ func step(dt: float) -> void:
 	_front.queue_redraw()
 
 
-## Behind the liquid: the glass body's faint frost and a soft dark outline.
+## Where each ice cube is drawn (local x, y of its centre, tilt): spread
+## across the glass, standing on the floor in shallow liquid, floating with a
+## sliver above the surface and bobbing on the waves once it is deep enough;
+## while falling, on its way down from above the view, tumbling.
+func _cube_poses(g: GarnishDef) -> Array[Vector3]:
+	var poses: Array[Vector3] = []
+	var t := _garnish_t[garnishes.find(g)]
+	var s := g.cube_size
+	var calm := surface_level(volume) if t >= ICE_FALL_TIME else level_for(volume)
+	var bottom := minf(_floor_y, calm + g.float_share * s) if volume >= 0.5 else _floor_y
+	var r := clampi(floori(bottom - s * 0.5) - _y0, 0, _row_area.size() - 1)
+	var left := float(_row_left[r]) + s * 0.5 + 0.6
+	var right := float(_row_right[r] + 1) - s * 0.5 - 0.6
+	for i in g.cube_count:
+		var look: Vector4 = CUBE_LOOKS[i % CUBE_LOOKS.size()]
+		var x := lerpf(left, right, float(i) / maxf(g.cube_count - 1, 1)) + look.x
+		var c := clampi(floori(x) - _x0, 0, _wave_h.size() - 1)
+		var y := bottom - s * 0.5
+		var angle := look.y
+		if volume >= 0.5 and bottom < _floor_y:  # afloat: ride the waves, drift a little
+			y += minf(look.w, _floor_y - bottom) - _wave_h[c]
+			var l := _wave_h[maxi(c - 2, 0)]
+			var rr := _wave_h[mini(c + 2, _wave_h.size() - 1)]
+			angle += (l - rr) * 0.12 + sin(_clock * 1.3 + i * 2.1) * 0.04
+		if t < ICE_FALL_TIME:
+			var u := t / ICE_FALL_TIME
+			y = lerpf(ICE_DROP_Y - i * 9.0, y, u * u)
+			x = lerpf(x + (i - 1) * 3.0, x, u)
+			angle += (1.0 - u) * look.z
+		poses.append(Vector3(x, y, angle))
+	return poses
+
+
+## Where the lime's slit sits on the left rim (local).
+func _lime_slit() -> Vector2:
+	return Vector2(outer_x_at(float(_y0)).x + 2.0, float(_y0))
+
+
+## How far above the rim the lime is drawn while it drops and bounces.
+func _lime_lift(t: float) -> float:
+	var u := clampf(t / LIME_DROP_TIME, 0.0, 1.0)
+	if u < 0.7:
+		return LIME_DROP_PX * (1.0 - pow(u / 0.7, 2.0))
+	return 1.8 * sin(PI * (u - 0.7) / 0.3)
+
+
+## Behind the liquid: the glass body's faint frost, a soft dark outline and
+## the ice (the liquid drawn over it refracts and tints what is under the surface).
 func _draw_back(ci: CanvasItem) -> void:
 	if def == null:
 		return
@@ -412,6 +606,10 @@ func _draw_back(ci: CanvasItem) -> void:
 	closed.append(_drawn_outer[0])
 	ci.draw_colored_polygon(_drawn_outer, Color(Palette.FROST, 0.07))
 	ci.draw_polyline(closed, Color(Palette.INK, 0.35), 0.7, true)
+	for g in garnishes:
+		if g.kind == GarnishDef.Kind.ICE:
+			for pose in _cube_poses(g):
+				GarnishArt.draw_ice_body(ci, Vector2(pose.x, pose.y), g.cube_size, pose.z)
 
 
 ## Draws this glass into another canvas item (already transformed) for its
@@ -443,6 +641,10 @@ func _draw_front(ci: CanvasItem) -> void:
 		box = box.expand(p)
 	for wall in _walls:
 		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, VesselArt.clear_glass_walls())
+	for g in garnishes:
+		if g.kind == GarnishDef.Kind.ICE:
+			for pose in _cube_poses(g):
+				GarnishArt.draw_ice_edges(ci, Vector2(pose.x, pose.y), g.cube_size, pose.z)
 
 	# The surface: a soft sheen with a bright line on top, following the waves.
 	if volume >= 0.5:
@@ -479,8 +681,13 @@ func _draw_front(ci: CanvasItem) -> void:
 		var walls := outer_x_at(d.y)
 		ci.draw_circle(Vector2(walls.y + 0.4 if d.x > 0.0 else walls.x - 0.4, d.y), 0.7, def.liquid_highlight)
 
-	_draw_band(ci)
-	_draw_fill_line(ci)
+	# The lime on the rim; the scoring marks stay on top of it.
+	for i in garnishes.size():
+		if garnishes[i].kind == GarnishDef.Kind.RIM:
+			GarnishArt.draw_lime(ci, _lime_slit() - Vector2(0.0, _lime_lift(_garnish_t[i])), LIME_RADIUS, LIME_ANGLE)
+	if show_marks:
+		_draw_band(ci)
+		_draw_fill_line(ci)
 
 
 ## The scoring band: a light bracket (spine + end ticks pointing at the glass)

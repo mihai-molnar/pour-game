@@ -5,25 +5,15 @@
 [ext_resource type="Script" path="res://glass.gd" id="3_glass"]
 [ext_resource type="Script" path="res://pourer.gd" id="4_pourer"]
 [ext_resource type="Script" path="res://stream.gd" id="5_stream"]
-[ext_resource type="Shader" path="res://liquid.gdshader" id="6_liquid"]
 [ext_resource type="Script" path="res://draw_layer.gd" id="7_layer"]
 [ext_resource type="Script" path="res://hud.gd" id="8_hud"]
 [ext_resource type="PackedScene" path="res://round_summary.tscn" id="9_summary"]
 [ext_resource type="Script" path="res://effects.gd" id="10_effects"]
 [ext_resource type="Script" path="res://shadows.gd" id="11_shadows"]
 [ext_resource type="Script" path="res://reflection.gd" id="12_reflection"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_glass"]
-shader = ExtResource("6_liquid")
-shader_parameter/lens_strength = 0.35
-shader_parameter/wobble_px = 0.6
-shader_parameter/edge_glow = 0.2
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_pourer"]
-shader = ExtResource("6_liquid")
-shader_parameter/lens_strength = 0.3
-shader_parameter/wobble_px = 0.6
-shader_parameter/edge_glow = 0.15
+[ext_resource type="Script" path="res://shop.gd" id="13_shop"]
+[ext_resource type="Material" path="res://liquid_glass.tres" id="14_glass_liquid"]
+[ext_resource type="Material" path="res://liquid_pourer.tres" id="15_pourer_liquid"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -57,7 +47,7 @@ script = ExtResource("3_glass")
 script = ExtResource("7_layer")
 
 [node name="Liquid" type="Node2D" parent="Glass"]
-material = SubResource("ShaderMaterial_glass")
+material = ExtResource("14_glass_liquid")
 script = ExtResource("7_layer")
 
 [node name="Front" type="Node2D" parent="Glass"]
@@ -74,7 +64,7 @@ script = ExtResource("4_pourer")
 script = ExtResource("7_layer")
 
 [node name="Liquid" type="Node2D" parent="Pourer"]
-material = SubResource("ShaderMaterial_pourer")
+material = ExtResource("15_pourer_liquid")
 script = ExtResource("7_layer")
 
 [node name="Front" type="Node2D" parent="Pourer"]
@@ -87,3 +77,6 @@ script = ExtResource("10_effects")
 script = ExtResource("8_hud")
 
 [node name="RoundSummary" parent="." instance=ExtResource("9_summary")]
+
+[node name="Shop" type="CanvasLayer" parent="."]
+script = ExtResource("13_shop")

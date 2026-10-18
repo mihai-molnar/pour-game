@@ -1,6 +1,6 @@
 extends CheckBase
-## Validates every drink in res://drinks/ and the GameState defaults, unlocks
-## and seeded picks.
+## Validates every drink in res://drinks/ and its garnishes, the shop
+## catalog and the GameState defaults, and seeded picks.
 
 
 func run() -> void:
@@ -17,12 +17,20 @@ func run() -> void:
 
 	# Typed locals: a preloaded .tres const may only be known as Resource to the analyzer.
 	var water: DrinkDef = GameState.WATER
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS.get(2)
-	expect(wine != null and wine.id == &"wine", "round 2 unlocks wine")
-	eq(GameState.unlock_for_round(1), null, "round 1 unlocks nothing")
-	eq(GameState.unlock_for_round(2), wine, "round 2 hands out wine")
-	eq(GameState.owned_drinks.size(), 2, "...and adds it to owned_drinks")
-	eq(GameState.unlock_for_round(2), null, "an owned drink isn't unlocked twice")
+	var wine: DrinkDef = GameState.WINE
+	expect(wine.id == &"wine", "GameState.WINE is wine")
+	expect(GameState.menu.size() == 1 and GameState.menu[0] == water, "menu starts as [water]")
+	expect(GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(), "nothing bought yet")
+	expect(GameState.DRINKS.size() == 2 and GameState.DRINKS[0] == water and GameState.DRINKS[1] == wine, "the catalog is water, wine")
+	eq([water.price, wine.price], [0, 80], "water is free, wine costs 80")
+	eq(water.garnishes.map(func(g: GarnishDef) -> StringName: return g.id), [&"ice", &"lime"], "water's garnishes are ice and lime")
+	eq(wine.garnishes.size(), 0, "wine has none yet")
+	var ice: GarnishDef = water.garnishes[0]
+	var lime: GarnishDef = water.garnishes[1]
+	eq([ice.price, ice.bonus, ice.key, ice.kind], [10, 0.2, KEY_UP, GarnishDef.Kind.ICE], "ice: 10 coins, +20 %, UP, falls in")
+	eq([lime.price, lime.bonus, lime.key, lime.kind], [15, 0.3, KEY_LEFT, GarnishDef.Kind.RIM], "lime: 15 coins, +30 %, LEFT, on the rim")
+	eq([ice.description, lime.description], ["Water pays +20%", "Water pays +30%"], "card lines")
+	eq([ice.display_name, lime.display_name], ["Ice", "Lime"], "garnish names")
 	GameState.reset_session(7)
 	var first := [GameState.rng.randi(), GameState.rng.randi()]
 	GameState.reset_session(7)

@@ -1,8 +1,8 @@
 class_name RoundSummary
 extends CanvasLayer
 ## End-of-round screen: glasses, perfects, best streak, coins this round and
-## total, on a rounded dark panel in the HUD's style. Space or clicking NEXT
-## ROUND emits next_pressed and hides it.
+## total, on a rounded dark panel in the HUD's style. Space or clicking TO THE
+## SHOP emits next_pressed (Main opens the shop) and hides it.
 
 signal next_pressed
 
@@ -46,7 +46,7 @@ func _ready() -> void:
 	_names = _label(root, rows, Palette.FROST, HORIZONTAL_ALIGNMENT_LEFT)
 	_values = _label(root, rows, Palette.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
 	_button = Button.new()
-	_button.text = "NEXT ROUND  (SPACE)"
+	_button.text = "TO THE SHOP  (SPACE)"
 	_button.focus_mode = Control.FOCUS_NONE
 	_button.add_theme_font_override("font", Hud.font(700))
 	_button.add_theme_color_override("font_color", Palette.INK)

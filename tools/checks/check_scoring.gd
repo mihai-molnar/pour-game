@@ -1,6 +1,6 @@
 extends CheckBase
 ## Checks the pure scoring rules: steps from rows off the line, fixed payouts,
-## the streak, and the spill penalty. Run:
+## the streak, the spill penalty and the garnish bonus. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=scoring
 
 
@@ -54,6 +54,22 @@ func run() -> void:
 	eq([spill.band, spill.coins, spill.streak], [Scoring.SPILL, -9, 0], "score: a wine spill at x3 costs 9, unmultiplied, and resets the streak")
 	near(Scoring.score(9, -0.1, false, 0, water, stats).error, -0.1, "score: passes the volume error through")
 	eq(Scoring.score(9, -0.1, false, 0, water, stats).rows, 9, "score: ...and the rows")
+	# Garnishes: a share of each step's coins, rounded to whole coins before the streak.
+	var ice: GarnishDef = load("res://garnishes/ice.tres")
+	var lime: GarnishDef = load("res://garnishes/lime.tres")
+	var with_ice: Array[GarnishDef] = [ice]
+	var with_lime: Array[GarnishDef] = [lime]
+	var both: Array[GarnishDef] = [ice, lime]
+	var table := []
+	for gs in [with_ice, with_lime, both]:
+		for b in [Scoring.PERFECT, Scoring.GOOD, Scoring.GOOD_ENOUGH]:
+			table.append(Scoring.garnished_coins(Scoring.base_coins(b, water), gs))
+	eq(table, [12, 7, 4, 13, 8, 4, 15, 9, 5], "water pays 12/7/4 with ice, 13/8/4 with lime, 15/9/5 with both")
+	eq(Scoring.score(0, 0.0, false, 5, water, stats, both).coins, roundi(15 * 1.5), "a garnished PERFECT at x1.5 pays round(15 x 1.5)")
+	eq(Scoring.score(0, 0.1, true, 0, water, stats, both).coins, -6, "a garnished spill still costs 6")
+	eq(Scoring.score(9, 0.0, false, 0, water, stats, both).coins, 0, "a garnished MISS pays 0")
+	eq(Scoring.score(0, 0.0, false, 0, water, stats, with_ice).garnishes, [&"ice"], "score records the garnishes")
+	eq(Scoring.score(0, 0.0, false, 0, water, stats).garnishes, [], "...none by default")
 	stats.coin_mult = 2.0
 	eq(Scoring.score(0, 0.0, false, 0, water, stats).coins, 20, "score: coin_mult doubles a payout")
 	eq(Scoring.score(0, 0.0, true, 0, water, stats).coins, -6, "score: ...but not a spill's cost")

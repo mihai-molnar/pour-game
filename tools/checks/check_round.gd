@@ -1,7 +1,7 @@
 extends CheckBase
 ## Plays rounds headless at full simulation speed and checks the round rules
-## from the slice 1 and slice 2 specs (phases, last call, auto-serve, refill,
-## resets, arrivals, drink picks). Run:
+## from the slice 1-3 specs (phases, last call, auto-serve, refill, resets,
+## arrivals, drink picks, the shop between rounds, garnishes). Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=round
 
 const DT := 1.0 / 60.0
@@ -25,10 +25,15 @@ func run() -> void:
 	_spill_costs_coins_but_never_below_zero()
 	_space_ignored_during_swap_and_refill()
 	_next_round_resets_and_reads_stats()
-	_round_two_unlocks_wine()
+	_summary_leads_to_the_shop()
+	_round_two_is_water_only()
+	_bought_wine_opens_the_next_round()
 	_picks_follow_the_seed()
 	_drink_change_swaps_the_pourer()
 	_mixed_round_with_autopilot()
+	_garnish_keys_follow_the_rules()
+	_serve_waits_for_falling_ice_and_pays_more()
+	_iced_round_with_autopilot()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -147,6 +152,7 @@ func _last_call_auto_serve() -> void:
 	expect(main.phase == Main.Phase.SUMMARY, "the round ends after the last-call serve")
 	expect(t - served_at >= Main.SUMMARY_DELAY - DT, "the summary waits SUMMARY_DELAY after the last serve (%.2f s)" % (t - served_at))
 	expect(not main.glass.visible, "the last glass vanishes and no new glass arrives")
+	main.open_shop()
 	main.next_round()
 	expect(main.glass.visible and main.glass.is_arriving(), "the next round's first glass is visible and arriving")
 
@@ -187,7 +193,7 @@ func _last_call_waits_for_a_refill() -> void:
 ## 0:00 while a replacement bottle slides in: the glass is still on the
 ## counter, so it gets its last call (the bottle refill finishes first).
 func _time_up_during_a_bottle_refill() -> void:
-	_fresh(2, 3)
+	_fresh_with_wine(3)
 	_run(Main.INTRO_TIME + 0.5)  # the opening wine bottle has arrived and popped its cork
 	main.glass.receive(Main.GLASS_POS.x, main.glass.target * 0.8, 0.0)
 	main.pourer.volume = main.pourer.full_volume * 0.001
@@ -297,6 +303,7 @@ func _next_round_resets_and_reads_stats() -> void:
 	main.pourer.volume = main.pourer.full_volume * 0.001
 	main.pourer.refilling = true
 	var round_before: int = GameState.round_number
+	main.open_shop()
 	main.next_round()
 	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "next_round starts the next INTRO")
 	expect(main.streak == 0, "streak resets")
@@ -309,32 +316,79 @@ func _next_round_resets_and_reads_stats() -> void:
 	GameState.stats = GameState.BASE_STATS.duplicate()
 
 
-func _round_two_unlocks_wine() -> void:
+func _summary_leads_to_the_shop() -> void:
+	_to_playing()
+	main.time_left = 0.01
+	_run(0.1)
+	expect(main.phase == Main.Phase.SUMMARY, "the round ended")
+	main.next_round()
+	expect(main.phase == Main.Phase.SUMMARY, "next_round does nothing from the summary")
+	main.summary.input_lock = 0.0
+	main.summary._next()
+	expect(main.phase == Main.Phase.SHOP and main.shop.visible and not main.summary.visible, "the summary's button opens the shop")
+	expect(not main.visible and not main.hud.visible, "the bar and the HUD are hidden in the shop")
+	var round_before: int = GameState.round_number
+	_run(1.0, true)
+	expect(main.phase == Main.Phase.SHOP and main.pourer.tilt == 0.0, "nothing ticks in the shop")
+	main.shop.input_lock = 0.0
+	var space := InputEventKey.new()
+	space.physical_keycode = KEY_SPACE
+	space.pressed = true
+	main.shop._unhandled_input(space)
+	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "Space in the shop starts the next round")
+	expect(main.visible and main.hud.visible and not main.shop.visible, "...and brings the bar back")
+	main.summary.input_lock = 0.5
+	main.shop.input_lock = 0.5
+
+
+## Round 2 of a session that bought wine in the shop: it opens with wine.
+func _fresh_with_wine(seed_value: int) -> void:
+	GameState.reset_session(seed_value)
+	GameState.coins = 80
+	GameState.buy_drink(GameState.WINE)
+	GameState.coins = 0
+	GameState.round_number = 2
+	main.start_round()
+
+
+func _round_two_is_water_only() -> void:
 	_fresh(2, 5)
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
-	expect(GameState.owned_drinks.has(wine), "round 2 unlocks wine")
-	expect(main.drink == wine and main.glass.def == wine and main.pourer.def == wine, "round 2 opens with wine: glass and bottle")
+	eq(main.hud.banner_label.text, "ROUND 2", "round 2 brings no drink by itself")
+	var seen := {}
+	for i in 40:
+		seen[main._pick_drink().id] = true
+	eq(seen.keys(), [&"water"], "nothing bought: only water")
+
+
+func _bought_wine_opens_the_next_round() -> void:
+	_fresh_with_wine(5)
+	var wine: DrinkDef = GameState.WINE
+	expect(main.drink == wine and main.glass.def == wine and main.pourer.def == wine, "the round after buying wine opens with wine")
 	eq(main.hud.banner_label.text, "ROUND 2\nNEW DRINK: WINE", "the banner names the new drink")
 	var seen := {}
 	for i in 40:
 		seen[main._pick_drink().id] = true
-	expect(seen.has(&"water") and seen.has(&"wine"), "after the first glass, picks include both drinks (%s)" % [seen.keys()])
+	expect(seen.has(&"water") and seen.has(&"wine"), "later picks include both drinks (%s)" % [seen.keys()])
+	GameState.set_on_menu(GameState.WATER, false)
+	seen.clear()
+	for i in 20:
+		seen[main._pick_drink().id] = true
+	eq(seen.keys(), [&"wine"], "picks come from the menu")
 	GameState.round_number = 3
 	main.start_round()
-	eq(main.hud.banner_label.text, "ROUND 3", "no unlock banner once wine is owned")
-	eq(GameState.owned_drinks.size(), 2, "wine isn't added twice")
+	eq(main.hud.banner_label.text, "ROUND 3", "no banner once wine isn't new")
 
 
 func _picks_follow_the_seed() -> void:
 	var runs: Array = []
 	for attempt in 2:
-		_fresh(2, 42)
+		_fresh_with_wine(42)
 		var ids: Array[StringName] = [main.drink.id]
 		for i in 20:
 			ids.append(main._pick_drink().id)
 		runs.append(ids)
 	expect(runs[0] == runs[1], "the same seed picks the same drinks")
-	_fresh(2, 43)
+	_fresh_with_wine(43)
 	var other: Array[StringName] = [main.drink.id]
 	for i in 20:
 		other.append(main._pick_drink().id)
@@ -342,10 +396,10 @@ func _picks_follow_the_seed() -> void:
 
 
 func _drink_change_swaps_the_pourer() -> void:
-	_fresh(2, 3)
+	_fresh_with_wine(3)
 	_run(Main.INTRO_TIME + DT)
 	var water: DrinkDef = GameState.WATER
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
+	var wine: DrinkDef = GameState.WINE
 	expect(main.drink == wine and not main.pourer.is_busy(), "wine is ready to pour")
 	main.pourer.volume = main.pourer.full_volume * 0.5
 	_serve_with_next(water)
@@ -371,7 +425,7 @@ func _drink_change_swaps_the_pourer() -> void:
 
 
 func _mixed_round_with_autopilot() -> void:
-	_fresh(2, 11)  # a seed that serves both drinks this round
+	_fresh_with_wine(11)  # a seed that serves both drinks this round
 	var pilot := Autopilot.new()
 	var t := 0.0
 	while main.phase != Main.Phase.SUMMARY and t < 60.0:
@@ -391,3 +445,103 @@ func _mixed_round_with_autopilot() -> void:
 		if r.band == Scoring.PERFECT or r.band == Scoring.GOOD:
 			good += 1
 	expect(good * 2 >= main.results.size(), "the autopilot lands most glasses GOOD or better (%d of %d)" % [good, main.results.size()])
+
+
+func _own_garnishes() -> void:
+	GameState.coins = 25
+	GameState.buy_garnish(GameState.WATER.garnishes[0])
+	GameState.buy_garnish(GameState.WATER.garnishes[1])
+
+
+func _garnish_keys_follow_the_rules() -> void:
+	_fresh()
+	var drink := main.drink
+	main.drink = null  # the sweep never starts a round, but still ticks once before quitting
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "the plain hint before any drink is set")
+	main.drink = drink
+	expect(not main.try_garnish(KEY_UP), "nothing during INTRO")
+	_run(Main.INTRO_TIME + DT)
+	expect(not main.try_garnish(KEY_UP), "nothing before buying ice")
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint before buying")
+	GameState.coins = 10
+	GameState.buy_garnish(GameState.WATER.garnishes[0])
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   UP  ice   ·   SPACE  serve   ·   F1  debug", "the hint names ice once bought")
+	GameState.coins = 15
+	GameState.buy_garnish(GameState.WATER.garnishes[1])
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   UP  ice   ·   LEFT  lime   ·   SPACE  serve   ·   F1  debug", "...and lime")
+	expect(main.try_garnish(KEY_UP) and not main.try_garnish(KEY_UP), "UP adds ice once")
+	expect(main.try_garnish(KEY_LEFT) and not main.try_garnish(KEY_DOWN), "LEFT adds lime; other keys don't")
+	_run(Glass.ICE_FALL_TIME + DT)  # a serve waits for falling ice
+	_serve_with_next(GameState.WATER)
+	expect(not main.try_garnish(KEY_UP), "nothing while the next glass arrives")
+	_run(0.5)
+	expect(main.glass.garnishes.is_empty() and main.try_garnish(KEY_UP), "the next glass arrives bare and takes ice")
+	_run(Glass.ICE_FALL_TIME + DT)
+	GameState.coins = 80
+	GameState.buy_drink(GameState.WINE)
+	_serve_with_next(GameState.WINE)
+	_run(0.6)
+	expect(not main.try_garnish(KEY_UP) and not main.try_garnish(KEY_LEFT), "wine takes no garnish")
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint on wine")
+	main.time_left = 0.01
+	_run(6.0)
+	expect(main.phase == Main.Phase.SUMMARY and not main.try_garnish(KEY_UP), "nothing on the summary")
+	main.open_shop()
+	expect(not main.try_garnish(KEY_UP) and not main.try_garnish(KEY_LEFT), "nothing in the shop")
+	main.next_round()
+	_run(Main.INTRO_TIME + DT)
+	expect(main.glass.garnishes.is_empty(), "nothing carried into the next round")
+
+
+func _serve_waits_for_falling_ice_and_pays_more() -> void:
+	_to_playing()
+	_own_garnishes()
+	main.try_garnish(KEY_UP)
+	main.try_garnish(KEY_LEFT)
+	main.glass.receive(Main.GLASS_POS.x, main.glass.target * 0.5, 0.0)
+	main.request_serve()
+	main.tick(DT, false)
+	expect(main.results.is_empty(), "a serve waits while the ice falls")
+	_run(Glass.ICE_FALL_TIME)
+	eq(main.results.size(), 1, "...and fires once it has landed")
+	if main.results.size() == 1:
+		eq(main.results[0].garnishes, [&"ice", &"lime"], "the score records both garnishes")
+	_run(0.5)
+	main.try_garnish(KEY_UP)
+	main.try_garnish(KEY_LEFT)
+	_run(Glass.ICE_FALL_TIME + DT)
+	var g := main.glass
+	g.receive(Main.GLASS_POS.x, g.target - g.displaced(g.target), 0.0)
+	main.streak = 0
+	main.request_serve()
+	main.tick(DT, false)
+	if main.results.size() == 2:
+		eq([main.results[1].band, main.results[1].coins], [Scoring.PERFECT, 15], "a PERFECT iced lime water pays 15")
+	else:
+		expect(false, "the second garnished glass was served")
+
+
+func _iced_round_with_autopilot() -> void:
+	_fresh()
+	GameState.coins = 120
+	Autopilot.new().shop(main)
+	expect(GameState.owns_garnish(GameState.WATER.garnishes[1]) and GameState.owns_drink(GameState.WINE), "the autopilot buys ice, lime, wine")
+	GameState.set_on_menu(GameState.WINE, false)
+	main.start_round()
+	var pilot := Autopilot.new()
+	var t := 0.0
+	while main.phase != Main.Phase.SUMMARY and t < 60.0:
+		var d := pilot.decide(main)
+		for k in d.keys:
+			main.try_garnish(k)
+		if d.serve:
+			main.request_serve()
+		main.tick(DT, d.hold)
+		t += DT
+	var garnished := 0
+	var good := 0
+	for r in main.results:
+		garnished += 1 if r.garnishes.size() == 2 else 0
+		good += 1 if r.band == Scoring.PERFECT or r.band == Scoring.GOOD else 0
+	expect(main.results.size() >= 4 and garnished == main.results.size(), "every autoplayed water glass is iced and limed (%d of %d)" % [garnished, main.results.size()])
+	expect(good * 2 >= main.results.size(), "...and most land GOOD or better (%d of %d)" % [good, main.results.size()])

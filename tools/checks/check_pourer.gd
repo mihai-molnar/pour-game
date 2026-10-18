@@ -17,7 +17,7 @@ func run() -> void:
 	var pourer: Pourer = main.pourer
 	var glass: Glass = main.glass
 	var water: DrinkDef = GameState.WATER
-	var wine: DrinkDef = GameState.ROUND_UNLOCKS[2]
+	var wine: DrinkDef = GameState.WINE
 	pourer.vanished.connect(func(_at: Vector2) -> void: _events.vanished += 1)
 	pourer.landed.connect(func(at: Vector2) -> void: _events.landed.append(at))
 	pourer.popped.connect(func(_at: Vector2, _v: Vector2, _c: Color) -> void: _events.popped += 1)

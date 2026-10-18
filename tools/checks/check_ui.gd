@@ -1,5 +1,5 @@
 extends CheckBase
-## Checks HUD formatting/state and the round summary screen. Run:
+## Checks HUD formatting/state, the round summary screen and the shop screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=ui
 
 
@@ -17,7 +17,7 @@ func run() -> void:
 	eq(Hud.format_mult(2.0), "x2", "x2")
 	eq(Hud.format_mult(3.0), "x3", "x3")
 	eq(Hud.round_banner(1, null), "ROUND 1", "plain round banner")
-	eq(Hud.round_banner(2, GameState.ROUND_UNLOCKS[2]), "ROUND 2\nNEW DRINK: WINE", "the unlock banner names the drink")
+	eq(Hud.round_banner(2, GameState.WINE), "ROUND 2\nNEW DRINK: WINE", "the unlock banner names the drink")
 
 	var hud: Hud = load("res://hud.gd").new()
 	add_child(hud)
@@ -95,6 +95,22 @@ func run() -> void:
 	summary._unhandled_input(space)
 	eq(pressed[0], true, "Space on the summary emits next_pressed")
 	eq(summary.visible, false, "...and hides it")
+	eq(summary._button.text, "TO THE SHOP  (SPACE)", "the summary leads to the shop")
+
+	var shop: Shop = load("res://shop.gd").new()
+	add_child(shop)
+	eq(shop.visible, false, "the shop starts hidden")
+	shop.open()
+	eq(shop.next_button.text, "NEXT ROUND  (SPACE)", "NEXT ROUND button")
+	eq(shop.TAB_NAMES, ["UPGRADES", "DRINKS", "MENU"], "the shop's tabs")
+	var left := [false]
+	shop.next_pressed.connect(func() -> void: left[0] = true)
+	shop._unhandled_input(space)
+	shop._next()
+	eq(left[0] == false and shop.visible, true, "Space and the button are ignored right after the shop opens")
+	shop.input_lock = 0.0
+	shop._unhandled_input(space)
+	eq(left[0] and not shop.visible, true, "Space in the shop emits next_pressed and hides it")
 
 	var fx: Effects = load("res://effects.gd").new()
 	add_child(fx)
@@ -105,6 +121,11 @@ func run() -> void:
 	for i in 180:
 		fx.step(1.0 / 60.0)
 	eq(fx.count(), 0, "effects are gone after 3 s")
+	fx.splash(Vector2(100, 200), Palette.WATER)
+	expect(fx.count() >= 3 and fx.count() <= 6, "a splash is 3-6 droplets (%d)" % fx.count())
+	for i in 180:
+		fx.step(1.0 / 60.0)
+	eq(fx.count(), 0, "...gone after 3 s")
 	for i in 100:
 		fx.puff(Vector2(100, 100))
 	expect(fx.count() <= Effects.MAX_BITS, "effects are capped (%d)" % fx.count())

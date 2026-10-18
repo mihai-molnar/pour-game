@@ -31,7 +31,7 @@ func run() -> void:
 
 	var inner := view.grow(-MARGIN)
 	var pills := [_rect_poly(Rect2(Hud.PILL_AT, Vector2(COIN_PILL_W, Hud.PILL_H))), _rect_poly(Hud.TIMER_PILL)]
-	for d: DrinkDef in [GameState.WATER, GameState.ROUND_UNLOCKS[2]]:
+	for d: DrinkDef in [GameState.WATER, GameState.WINE]:
 		var glass := Transform2D(0.0, Main.GLASS_POS) * d.glass_outer
 		expect(inner.encloses(_box(glass)) and not _behind_pill(main, glass, pills), "%s glass fits, clear of the HUD" % d.id)
 		var lip := Main.GLASS_POS + d.pourer_offset

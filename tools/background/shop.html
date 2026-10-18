@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shop Background</title>
+<style>
+  html, body { margin: 0; background: #0e0c12; }
+  canvas { display: block; width: 100%; height: auto; }
+  #out { display: none; }
+</style>
+</head>
+<body>
+<!--
+  The shop's background: a liquor shop between rounds — dark-wood glass-front
+  cabinets with backlit shelves and brass plaques on the left and at the back,
+  a red-lacquered wine wall on the right, spotlights in the ceiling, a plank
+  floor and a dark display table in front. Drawn in the HUD's 640x360 units
+  and rendered at PPU image pixels per unit. Open it in a browser to preview;
+  tools/make_background.sh shop renders it to art/shop_background.png (it loads
+  the page with ?export and reads the PNG back).
+
+  Keep in sync with shop.gd: it covers the whole 640x360 screen; the content
+  panel sits at x 40-600, y 40-310 (darkened a little here so the cards read).
+-->
+<canvas id="c"></canvas>
+<pre id="out"></pre>
+<script>
+const WW = 640, WH = 360, PPU = 4;
+const W = WW * PPU, H = WH * PPU;
+const FLOOR_Y = 288;
+
+// Colours (warm shop tones; the game code never reads these).
+const C = {
+  ceiling: '#1f1716', wall: '#2a1d1b', wood: '#3b2416', woodDark: '#22140d', woodLight: '#6b4128',
+  brass: '#c9a35a', brassDark: '#7a5a2a', lacquer: '#7c1820', lacquerDark: '#470d13',
+  spot: '255,226,180', warm: '254,190,110', label: '#eadcbc', labelDark: '#2a1c24',
+  floor: '#6a3f24', floorDark: '#3a2215',
+};
+
+function rng(seed) { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
+function layer() { const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d'); c.setTransform(PPU, 0, 0, PPU, 0, 0); return [cv, c]; }
+function glow(c, x, y, r, rgb, a, sy = 1) {
+  c.save(); c.translate(x, y); c.scale(1, sy);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, r);
+  g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(0.45, `rgba(${rgb},${a * 0.45})`); g.addColorStop(1, `rgba(${rgb},0)`);
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill(); c.restore();
+}
+function vgrad(c, y0, y1, stops) { const g = c.createLinearGradient(0, y0, 0, y1); for (const [o, col] of stops) g.addColorStop(o, col); return g; }
+function hgrad(c, x0, x1, stops) { const g = c.createLinearGradient(x0, 0, x1, 0); for (const [o, col] of stops) g.addColorStop(o, col); return g; }
+
+// ---------- bottles ----------
+const LIQUOR = [
+  // [glass top, glass bottom (backlit), label colour or null]
+  ['#5a3410', '#e0a040', '#eadcbc'], ['#3a1c0c', '#b86a2e', '#2a1c24'], ['#2e3a46', '#b8c8d8', '#eadcbc'],
+  ['#183a22', '#4e9a44', '#eadcbc'], ['#4a1418', '#b8343c', null], ['#1a2238', '#5a70a0', '#c9a35a'],
+  ['#6a4a14', '#f0c060', null], ['#2a2a30', '#8a8a98', '#eadcbc'], ['#4a2a10', '#d08a3a', '#8e1d24'],
+];
+const SHAPES = [
+  [0.3, 0.38, 0.5, [5, 7], [18, 24]],     // long neck, round shoulders
+  [0.42, 0.22, 0.18, [6, 9], [14, 20]],   // short neck, square shoulders
+  [0.38, 0.2, 0.35, [8, 10.5], [10, 14]], // squat decanter
+  [0.36, 0.3, 0.3, [4.5, 6], [20, 26]],   // tall and slim
+];
+function bottle(c, x, base, w, h, shape, look, R) {
+  const [top, bottom, label] = look;
+  const neckW = w * shape[0], neckH = h * shape[1], bodyH = h - neckH, shoulder = w * shape[2];
+  c.fillStyle = vgrad(c, base - h, base, [[0, top], [0.5, top], [1, bottom]]);
+  c.beginPath();
+  c.moveTo(x, base); c.lineTo(x, base - bodyH + shoulder);
+  c.quadraticCurveTo(x, base - bodyH, x + (w - neckW) / 2, base - bodyH - shoulder * 0.2);
+  c.lineTo(x + (w - neckW) / 2, base - h); c.lineTo(x + (w + neckW) / 2, base - h);
+  c.lineTo(x + (w + neckW) / 2, base - bodyH - shoulder * 0.2);
+  c.quadraticCurveTo(x + w, base - bodyH, x + w, base - bodyH + shoulder);
+  c.lineTo(x + w, base); c.closePath(); c.fill();
+  c.fillStyle = R() < 0.5 ? '#2a1c24' : '#9a7a40';
+  c.fillRect(x + (w - neckW) / 2 - 0.2, base - h - 0.5, neckW + 0.4, 1.8);
+  if (label) {
+    const ly = base - bodyH * (0.32 + R() * 0.15), lh = bodyH * 0.34;
+    c.globalAlpha = 0.7; c.fillStyle = label; c.fillRect(x + 0.4, ly, w - 0.8, lh);
+    c.globalAlpha = 0.45; c.fillStyle = '#3e2731'; c.fillRect(x + w * 0.22, ly + lh * 0.42, w * 0.56, 0.45);
+    c.globalAlpha = 1;
+  }
+  c.fillStyle = 'rgba(255,245,230,0.32)'; c.fillRect(x + w * 0.16, base - bodyH + shoulder * 0.6, w * 0.1, bodyH - shoulder - 1);
+}
+// A shelf of bottles between x0 and x1 standing on y, lit from above.
+function bottleRow(c, R, x0, x1, y, scale, dim) {
+  c.fillStyle = vgrad(c, y - 26 * scale, y, [[0, `rgba(${C.warm},0.04)`], [1, `rgba(${C.warm},${0.2 * dim})`]]);
+  c.fillRect(x0, y - 26 * scale, x1 - x0, 26 * scale);
+  for (const back of [true, false]) {
+    let x = x0 + 0.6 + R() * 2;
+    while (x < x1) {
+      const shape = SHAPES[Math.floor(R() * SHAPES.length)];
+      const w = (shape[3][0] + R() * (shape[3][1] - shape[3][0])) * scale;
+      const h = (shape[4][0] + R() * (shape[4][1] - shape[4][0])) * scale * (back ? 0.9 : 1);
+      if (x + w > x1 - 0.5) break;
+      c.filter = back ? 'brightness(0.45)' : (dim < 1 ? `brightness(${dim})` : 'none');
+      bottle(c, x, y, w, h, shape, LIQUOR[Math.floor(R() * LIQUOR.length)], R);
+      c.filter = 'none';
+      x += w + (back ? 1.5 + R() * 3 : 0.5 + R() * 1.6) * scale;
+    }
+  }
+  // shelf edge with a lit lip
+  c.fillStyle = `rgba(255,214,170,${0.45 * dim})`; c.fillRect(x0, y, x1 - x0, 0.6);
+  c.fillStyle = 'rgba(30,16,10,0.95)'; c.fillRect(x0, y + 0.6, x1 - x0, 1.6);
+}
+
+// ---------- far: ceiling, wall, spotlights ----------
+const SPOTS = [64, 176, 300, 420, 548];
+function drawFar(c) {
+  c.fillStyle = vgrad(c, 0, 38, [[0, '#120c0c'], [1, C.ceiling]]);
+  c.fillRect(0, 0, WW, 38);
+  c.fillStyle = vgrad(c, 38, FLOOR_Y, [[0, '#2e201c'], [1, C.wall]]);
+  c.fillRect(0, 38, WW, FLOOR_Y - 38);
+  // crown moulding
+  c.fillStyle = C.woodDark; c.fillRect(0, 36, WW, 4);
+  c.fillStyle = 'rgba(255,210,160,0.16)'; c.fillRect(0, 36, WW, 0.6);
+  for (const x of SPOTS) {
+    // recessed spot: a bright disc in the ceiling and its cone of light down the wall
+    c.fillStyle = '#0c0808'; c.beginPath(); c.ellipse(x, 18, 7, 2.4, 0, 0, Math.PI * 2); c.fill();
+    glow(c, x, 18.5, 9, C.spot, 0.95, 0.4);
+    glow(c, x, 18.8, 3.5, '255,250,240', 1, 0.5);
+    // the cone, built from nested wedges so its edges fade
+    for (const [spread, a] of [[52, 0.035], [40, 0.035], [28, 0.04], [17, 0.04]]) {
+      c.fillStyle = vgrad(c, 20, 190, [[0, `rgba(${C.spot},${a})`], [1, `rgba(${C.spot},0)`]]);
+      c.beginPath(); c.moveTo(x - 4, 20); c.lineTo(x + 4, 20); c.lineTo(x + spread, 190); c.lineTo(x - spread, 190); c.closePath(); c.fill();
+    }
+    glow(c, x, 70, 60, C.spot, 0.1, 1.4);
+  }
+}
+
+// ---------- mid: cabinets and the wine wall ----------
+const PLAQUES = ['WHISKY', 'COGNAC', 'ROM', 'GIN', 'VODKA', 'BRANDY'];
+// A glass-front wood cabinet at [x, x + w] from top to FLOOR_Y, with a brass plaque.
+function cabinet(c, R, x, w, top, plaque, scale, dim) {
+  const bottom = FLOOR_Y - 2;
+  c.fillStyle = hgrad(c, x, x + w, [[0, C.woodDark], [0.1, C.wood], [0.9, C.wood], [1, C.woodDark]]);
+  c.fillRect(x, top, w, bottom - top);
+  // crown with the plaque
+  c.fillStyle = C.woodLight; c.fillRect(x - 1, top - 3, w + 2, 3);
+  c.fillStyle = 'rgba(255,220,170,0.25)'; c.fillRect(x - 1, top - 3, w + 2, 0.5);
+  const pw = Math.min(w * 0.62, 40 * scale), ph = 8 * scale, px = x + (w - pw) / 2, py = top + 2;
+  c.fillStyle = vgrad(c, py, py + ph, [[0, '#e8c87a'], [0.5, C.brass], [1, C.brassDark]]);
+  c.fillRect(px, py, pw, ph);
+  c.strokeStyle = 'rgba(60,40,10,0.8)'; c.lineWidth = 0.4; c.strokeRect(px + 0.8, py + 0.8, pw - 1.6, ph - 1.6);
+  c.fillStyle = '#3a2410'; c.font = `bold ${4.6 * scale}px Georgia, serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(plaque, px + pw / 2, py + ph / 2 + 0.3);
+  // the glass case: a lit interior with shelves of bottles
+  const ix = x + 4 * scale, iw = w - 8 * scale, itop = py + ph + 4 * scale, ibottom = bottom - 16 * scale;
+  c.fillStyle = vgrad(c, itop, ibottom, [[0, '#3a2414'], [1, '#2a180e']]);
+  c.fillRect(ix, itop, iw, ibottom - itop);
+  glow(c, x + w / 2, itop + 4, w * 0.7, C.warm, 0.18 * dim, 0.6);
+  const rows = Math.max(3, Math.round((ibottom - itop) / (34 * scale)));
+  for (let i = 1; i <= rows; i++) bottleRow(c, R, ix, ix + iw, itop + (ibottom - itop) * i / rows - 0.5, scale, dim);
+  // glass reflections
+  c.save(); c.beginPath(); c.rect(ix, itop, iw, ibottom - itop); c.clip();
+  for (let k = 0; k < 2; k++) {
+    const sx = ix + R() * iw;
+    c.fillStyle = 'rgba(255,240,225,0.05)';
+    c.beginPath(); c.moveTo(sx, itop); c.lineTo(sx + 9 * scale, itop); c.lineTo(sx - 25 * scale, ibottom); c.lineTo(sx - 34 * scale, ibottom); c.closePath(); c.fill();
+  }
+  c.restore();
+  // door stiles with brass diamond studs, a plinth with drawers
+  for (const sx of [x, x + w - 4 * scale]) {
+    c.fillStyle = hgrad(c, sx, sx + 4 * scale, [[0, '#2a180e'], [0.5, '#4a2c1a'], [1, '#22140c']]);
+    c.fillRect(sx, itop - 2, 4 * scale, ibottom - itop + 4);
+    for (let y = itop + 12 * scale; y < ibottom; y += 40 * scale) {
+      c.fillStyle = C.brass; c.beginPath();
+      const cx = sx + 2 * scale; c.moveTo(cx, y - 1.6 * scale); c.lineTo(cx + 1.2 * scale, y); c.lineTo(cx, y + 1.6 * scale); c.lineTo(cx - 1.2 * scale, y); c.closePath(); c.fill();
+    }
+  }
+  c.fillStyle = vgrad(c, ibottom, bottom, [[0, '#4a2c1a'], [1, '#24140c']]);
+  c.fillRect(x, ibottom + 1, w, bottom - ibottom - 1);
+  c.strokeStyle = 'rgba(0,0,0,0.45)'; c.lineWidth = 0.6; c.strokeRect(x + 3, ibottom + 4, w - 6, bottom - ibottom - 7);
+  c.fillStyle = C.brass; c.fillRect(x + w / 2 - 2, ibottom + (bottom - ibottom) / 2, 4, 0.8);
+}
+function wineWall(c, R, x0, x1, top) {
+  const bottom = FLOOR_Y - 2;
+  c.fillStyle = vgrad(c, top, bottom, [[0, C.lacquer], [1, C.lacquerDark]]);
+  c.fillRect(x0, top, x1 - x0, bottom - top);
+  // lit top band
+  c.fillStyle = '#9e2a32'; c.fillRect(x0, top, x1 - x0, 6);
+  c.fillStyle = 'rgba(255,220,200,0.3)'; c.fillRect(x0, top, x1 - x0, 0.6);
+  glow(c, (x0 + x1) / 2, top + 10, (x1 - x0) * 0.6, '255,160,140', 0.1, 0.25);
+  const cols = 4, rowH = 24;
+  let row = 0;
+  for (let y = top + 6 + rowH; y < bottom - 4; y += rowH, row++) {
+    // the dark back of each cubby, lit a little from above
+    c.fillStyle = vgrad(c, y - rowH + 1, y, [[0, 'rgba(16,3,5,0.9)'], [1, 'rgba(40,8,10,0.85)']]);
+    c.fillRect(x0 + 2, y - rowH + 1, x1 - x0 - 4, rowH - 2);
+    c.fillStyle = 'rgba(255,170,140,0.08)'; c.fillRect(x0 + 2, y - rowH + 1, x1 - x0 - 4, 3);
+    if (row % 3 === 1) {
+      // racked bottles lying down: a grid of bottle ends, each with a lit rim
+      for (let by = y - rowH + 6; by < y - 2; by += 6.2) {
+        for (let bx = x0 + 6 + ((by - y) % 2 ? 0 : 3); bx < x1 - 5; bx += 6.2) {
+          const green = R() < 0.65;
+          c.fillStyle = green ? '#0c1610' : '#1e070b'; c.beginPath(); c.arc(bx, by, 2.6, 0, Math.PI * 2); c.fill();
+          c.strokeStyle = green ? 'rgba(90,150,100,0.55)' : 'rgba(170,60,70,0.55)'; c.lineWidth = 0.5;
+          c.beginPath(); c.arc(bx, by, 2.4, Math.PI * 0.9, Math.PI * 1.7); c.stroke();
+          c.fillStyle = 'rgba(0,0,0,0.6)'; c.beginPath(); c.arc(bx, by, 0.9, 0, Math.PI * 2); c.fill();
+        }
+      }
+    } else {
+      let x = x0 + 3 + R() * 2;
+      while (x < x1 - 8) {
+        const w = 4.6 + R() * 1.4, h = 15.5 + R() * 4;
+        const kind = R();
+        const look = kind < 0.5 ? ['#0e1a12', '#2a4a30', R() < 0.8 ? C.label : null]
+          : kind < 0.8 ? ['#24080e', '#5e1820', C.label] : ['#3a2a10', '#b89048', '#eadcbc'];
+        bottle(c, x, y, w, h, SHAPES[R() < 0.8 ? 0 : 3], look, R);
+        c.fillStyle = R() < 0.5 ? '#5a0e16' : '#a8873e';
+        c.fillRect(x + w * 0.35, y - h - 0.5, w * 0.3, h * 0.2);
+        x += w + 0.5 + R() * (R() < 0.15 ? 5 : 1.2);
+      }
+    }
+    c.fillStyle = '#922028'; c.fillRect(x0, y, x1 - x0, 1.6);
+    c.fillStyle = 'rgba(255,200,180,0.25)'; c.fillRect(x0, y, x1 - x0, 0.4);
+  }
+  for (let i = 0; i <= cols; i++) {
+    const x = x0 + (x1 - x0) * i / cols;
+    c.fillStyle = hgrad(c, x - 2, x + 2, [[0, C.lacquerDark], [0.5, '#922028'], [1, C.lacquerDark]]);
+    c.fillRect(x - 2, top + 6, 4, bottom - top - 6);
+  }
+}
+function drawMid(c) {
+  const R = rng(7);
+  // the far corner: smaller cabinets further back, a little darker
+  let x = 214;
+  for (const p of ['COGNAC', 'ROM', 'GIN']) { cabinet(c, R, x, 66, 64, p, 0.8, 0.8); x += 68; }
+  // the left wall: big cabinets
+  x = -10;
+  for (const p of ['WHISKY', 'VODKA', 'BRANDY']) { cabinet(c, R, x, 74, 48, p, 1, 1); x += 76; }
+  wineWall(c, R, 420, 650, 54);
+}
+
+// ---------- near: floor and the display table ----------
+function drawNear(c) {
+  const R = rng(5);
+  c.fillStyle = vgrad(c, FLOOR_Y, WH, [[0, C.floorDark], [1, C.floor]]);
+  c.fillRect(0, FLOOR_Y, WW, WH - FLOOR_Y);
+  // planks receding toward the back wall
+  const vx = 320, vy = 150;
+  c.strokeStyle = 'rgba(20,10,6,0.45)'; c.lineWidth = 0.4;
+  for (let i = -16; i <= 16; i++) {
+    const bx = vx + i * 46;
+    const t = (FLOOR_Y - vy) / (WH - vy);
+    c.beginPath(); c.moveTo(vx + (bx - vx) * t, FLOOR_Y); c.lineTo(bx, WH); c.stroke();
+  }
+  for (let k = 0; k < 40; k++) {
+    const y = FLOOR_Y + Math.pow(R(), 1.6) * (WH - FLOOR_Y), x = R() * WW;
+    c.fillStyle = 'rgba(20,10,6,0.35)'; c.fillRect(x, y, 6 + R() * 18, 0.35);
+  }
+  // pools of light under the spots and a soft sheen
+  for (const x of SPOTS) glow(c, x, FLOOR_Y + 14, 60, C.spot, 0.12, 0.25);
+  c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(0, FLOOR_Y, WW, 1);
+  // the display table: a thick polished dark top with an apron, turned legs,
+  // a few gift boxes and bottles on it
+  const tx0 = 222, tx1 = 418, ty = 338;
+  c.fillStyle = 'rgba(0,0,0,0.4)'; c.beginPath(); c.ellipse((tx0 + tx1) / 2, 358, 112, 7, 0, 0, Math.PI * 2); c.fill();
+  for (const lx of [tx0 + 8, tx1 - 18]) {
+    c.fillStyle = hgrad(c, lx, lx + 10, [[0, '#120804'], [0.35, '#4a2a18'], [0.55, '#2e180c'], [1, '#0e0603']]);
+    c.beginPath(); c.moveTo(lx + 2, ty + 12); c.lineTo(lx + 8, ty + 12); c.quadraticCurveTo(lx + 11, ty + 18, lx + 8, ty + 24);
+    c.lineTo(lx + 7, WH); c.lineTo(lx + 3, WH); c.lineTo(lx + 2, ty + 24); c.quadraticCurveTo(lx - 1, ty + 18, lx + 2, ty + 12); c.closePath(); c.fill();
+  }
+  // apron, front edge, top
+  c.fillStyle = vgrad(c, ty + 5, ty + 13, [[0, '#2a160c'], [1, '#140a05']]); c.fillRect(tx0 + 4, ty + 5, tx1 - tx0 - 8, 8);
+  c.fillStyle = 'rgba(201,163,90,0.35)'; c.fillRect(tx0 + 4, ty + 11, tx1 - tx0 - 8, 0.5);
+  c.fillStyle = vgrad(c, ty, ty + 5, [[0, '#6a3a22'], [0.25, '#3a1e10'], [1, '#1a0d06']]);
+  c.fillRect(tx0 - 3, ty, tx1 - tx0 + 6, 5);
+  c.fillStyle = vgrad(c, ty - 4, ty, [[0, '#24120a'], [1, '#4a2816']]);
+  c.beginPath(); c.moveTo(tx0 + 2, ty - 4); c.lineTo(tx1 - 2, ty - 4); c.lineTo(tx1 + 3, ty); c.lineTo(tx0 - 3, ty); c.closePath(); c.fill();
+  c.fillStyle = 'rgba(255,225,190,0.5)'; c.fillRect(tx0 - 3, ty, tx1 - tx0 + 6, 0.5);
+  glow(c, 320, ty - 2, 60, C.spot, 0.16, 0.08);
+  // gift boxes and bottles (with their reflections in the polish)
+  const items = () => {
+    c.fillStyle = vgrad(c, ty - 26, ty - 3, [[0, '#3a3a46'], [1, '#18181f']]); c.fillRect(262, ty - 26, 18, 23);
+    c.fillStyle = 'rgba(220,220,235,0.55)'; c.fillRect(264, ty - 18, 14, 6);
+    c.fillStyle = vgrad(c, ty - 15, ty - 3, [[0, '#8e1d24'], [1, '#4a0c12']]); c.fillRect(342, ty - 15, 26, 12);
+    c.fillStyle = C.brass; c.fillRect(342, ty - 10, 26, 1.2); c.fillRect(354, ty - 15, 1.2, 12);
+    bottle(c, 296, ty - 3, 7, 27, SHAPES[0], ['#0e1a12', '#2a4a30', C.label], rng(21));
+    bottle(c, 307, ty - 3, 9, 20, SHAPES[1], ['#5a3410', '#e0a040', '#eadcbc'], rng(22));
+    bottle(c, 320, ty - 3, 6, 25, SHAPES[3], ['#24080e', '#5e1820', C.label], rng(23));
+    bottle(c, 374, ty - 3, 10, 13, SHAPES[2], ['#2e3a46', '#b8c8d8', null], rng(24));
+  };
+  items();
+  c.save(); c.globalAlpha = 0.18; c.translate(0, 2 * (ty - 3.5)); c.scale(1, -1);
+  c.beginPath(); c.rect(tx0, ty - 3.5, tx1 - tx0, -4); c.clip(); items(); c.restore();
+}
+
+// ---------- compose ----------
+const cv = document.getElementById('c'); cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const [far, fc] = layer(), [mid, mc] = layer(), [near, nc] = layer();
+drawFar(fc); drawMid(mc); drawNear(nc);
+ctx.fillStyle = C.wall; ctx.fillRect(0, 0, W, H);
+ctx.filter = 'blur(4px)'; ctx.drawImage(far, 0, 0);
+ctx.filter = 'blur(2.6px)'; ctx.drawImage(mid, 0, 0);
+ctx.filter = 'blur(1.4px)'; ctx.drawImage(near, 0, 0);
+ctx.filter = 'none';
+// calmer behind the content panel so the cards read
+ctx.setTransform(PPU, 0, 0, PPU, 0, 0);
+glow(ctx, 320, 175, 300, '10,6,8', 0.4, 0.55);
+ctx.setTransform(1, 0, 0, 1, 0, 0);
+// soft vignette
+const vg = ctx.createRadialGradient(W * 0.5, H * 0.5, H * 0.4, W * 0.5, H * 0.5, W * 0.62);
+vg.addColorStop(0, 'rgba(6,3,8,0)'); vg.addColorStop(1, 'rgba(6,3,8,0.5)');
+ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+if (location.search.includes('export')) document.getElementById('out').textContent = 'PNGSTART' + cv.toDataURL('image/png') + 'PNGEND';
+</script>
+</body>
+</html>
