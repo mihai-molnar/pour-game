@@ -35,3 +35,39 @@ func run() -> void:
 	GameState.reset_session(1)
 	expect(GameState.owned_drinks == [water] and GameState.menu == [water] and GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(),
 		"reset_session clears purchases and the menu")
+
+	# The shop screen.
+	eq([Shop.card_state(10, false, 9), Shop.card_state(10, false, 10), Shop.card_state(10, true, 0)],
+		[Shop.CardState.CANT_AFFORD, Shop.CardState.CAN_BUY, Shop.CardState.OWNED], "card states")
+	GameState.reset_session(1)
+	GameState.coins = 5
+	var shop: Shop = load("res://shop.gd").new()
+	add_child(shop)
+	shop.open()
+	eq(shop.tab, Shop.Tab.UPGRADES, "the shop opens on UPGRADES the first time")
+	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [ice, lime], "UPGRADES: water's ice and lime")
+	expect(shop.state_of(ice) == Shop.CardState.CANT_AFFORD and shop.cards[0].buy_button.disabled, "5 coins: ice is greyed out")
+	GameState.coins = 20
+	shop.open()
+	expect(shop.state_of(ice) == Shop.CardState.CAN_BUY and not shop.cards[0].buy_button.disabled, "coins earned since: reopening refreshes the cards")
+	shop.cards[0].buy_button.pressed.emit()
+	shop.cards[0].buy_button.pressed.emit()
+	eq(GameState.coins, 10, "a double click on BUY spends 10 once")
+	expect(shop.state_of(ice) == Shop.CardState.OWNED and shop.cards[0].badge.visible, "ice shows OWNED")
+	eq(shop.coins_label.text, "10", "the coin pill follows")
+	shop.show_tab(Shop.Tab.DRINKS)
+	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [wine], "DRINKS: wine")
+	eq(shop.state_of(wine), Shop.CardState.CANT_AFFORD, "10 coins can't buy wine")
+	GameState.coins = 80
+	shop.show_tab(Shop.Tab.DRINKS)
+	expect(shop.buy(wine) and GameState.menu.has(wine) and shop.state_of(wine) == Shop.CardState.OWNED, "wine bought, on the menu")
+	shop.show_tab(Shop.Tab.MENU)
+	eq(shop.cards.map(func(c: ShopCard) -> Resource: return c.item), [water, wine], "MENU: a card per owned drink")
+	expect(shop.toggle(water) and not GameState.menu.has(water), "water switched off")
+	expect(not shop.toggle(wine) and shop.cards[1].toggle_button.disabled and shop.cards[1].note.visible, "the last drink on can't be switched off")
+	shop.close()
+	shop.open()
+	eq(shop.tab, Shop.Tab.MENU, "the shop reopens on the last tab")
+	shop.toggle(water)
+	expect(GameState.menu.size() == 2, "water back on")
+	shop.free()

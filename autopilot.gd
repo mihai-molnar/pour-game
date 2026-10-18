@@ -39,12 +39,12 @@ func decide(main: Main) -> Dictionary:
 	return out
 
 
-## Buys what it can in SHOPPING order.
+## Buys what it can in SHOPPING order, through the shop (so its cards show it).
 func shop(main: Main) -> void:
 	for id in SHOPPING:
 		for d: DrinkDef in GameState.DRINKS:
 			if d.id == id:
-				GameState.buy_drink(d)
+				main.shop.buy(d)
 			for g in d.garnishes:
 				if g.id == id:
-					GameState.buy_garnish(g)
+					main.shop.buy(g)
