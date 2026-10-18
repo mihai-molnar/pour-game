@@ -31,6 +31,7 @@ func run() -> void:
 	eq([lime.price, lime.bonus, lime.key, lime.kind], [15, 0.3, KEY_LEFT, GarnishDef.Kind.RIM], "lime: 15 coins, +30 %, LEFT, on the rim")
 	eq([ice.description, lime.description], ["Water pays +20%", "Water pays +30%"], "card lines")
 	eq([ice.display_name, lime.display_name], ["Ice", "Lime"], "garnish names")
+	eq([ice.cube_count, ice.cube_size], [2, 10.4], "ice: two cubes of 10.4 px")
 	GameState.reset_session(7)
 	var first := [GameState.rng.randi(), GameState.rng.randi()]
 	GameState.reset_session(7)
@@ -44,6 +45,9 @@ func run() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	add_child(main)
 	main.manual = true
+	main.glass.setup(water)
+	var floor_w: int = main.glass._row_area[main.glass._row_area.size() - 1]
+	expect(ice.cube_count * ice.cube_size < floor_w, "...side by side they fit the tumbler's floor (%d px)" % floor_w)
 	var checked := 0
 	for file in DirAccess.get_files_at("res://drinks"):
 		if file.ends_with(".tres"):
