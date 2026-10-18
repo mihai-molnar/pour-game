@@ -332,6 +332,38 @@ func frame() -> Transform2D:
 	return Transform2D(tilt, _mouth - _mouth.rotated(tilt))
 
 
+## Where liquid moving from `prev_world` to `world` is relative to the tipped
+## opening: 0 still above it, 1 it crossed between the lips (it's in), 2 it
+## crossed outside them (missed).
+func entry(prev_world: Vector2, world: Vector2) -> int:
+	var a := to_glass(prev_world)
+	var b := to_glass(world)
+	if not (a.y < _y0 and b.y >= _y0):
+		return 0
+	var x := lerpf(a.x, b.x, (_y0 - a.y) / (b.y - a.y))
+	return 1 if x > _row_left[0] and x < _row_right[0] + 1 else 2
+
+
+## `world` kept inside the tipped glass's walls at its height (liquid runs
+## down the side instead of passing through it).
+func keep_inside(world: Vector2) -> Vector2:
+	var q := to_glass(world)
+	var r := clampi(floori(q.y) - _y0, 0, _row_area.size() - 1)
+	if _row_area[r] == 0:
+		return world
+	var x := clampf(q.x, _row_left[r] + 0.5, _row_right[r] + 0.5)
+	return world if x == q.x else from_glass(Vector2(x, q.y))
+
+
+## Local y where liquid falling at local x lands: the head's top, or the
+## liquid's wavy surface.
+func surface_local_at(x: float) -> float:
+	var c := clampi(floori(x) - _x0, 0, _wave_h.size() - 1)
+	if foam != null and foam.volume >= 0.5:
+		return minf(calm_y(x, _foam_level), float(_col_bottom[c]))
+	return _surface_local(c)
+
+
 ## A world point in the glass's own (tipped) frame, and back.
 func to_glass(world: Vector2) -> Vector2:
 	return frame().affine_inverse() * (world - global_position)

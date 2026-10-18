@@ -34,6 +34,8 @@ func run() -> void:
 	_garnish_keys_follow_the_rules()
 	_serve_waits_for_falling_ice_and_pays_more()
 	_iced_round_with_autopilot()
+	_serve_waits_for_an_upright_glass()
+	_last_call_waits_for_an_upright_glass()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -551,3 +553,42 @@ func _iced_round_with_autopilot() -> void:
 		good += 1 if r.band == Scoring.PERFECT or r.band == Scoring.GOOD else 0
 	expect(main.results.size() >= 4 and garnished == main.results.size(), "every autoplayed water glass is iced and limed (%d of %d)" % [garnished, main.results.size()])
 	expect(good * 2 >= main.results.size(), "...and most land GOOD or better (%d of %d)" % [good, main.results.size()])
+
+
+## A beer glass with the target in it, the bottle ready, nothing pouring, then
+## tipped as if the pour had just stopped.
+func _tipped_beer_glass() -> void:
+	_fresh()
+	GameState.owned_drinks.append(GameState.BEER)
+	_run(Main.INTRO_TIME + DT)
+	_serve_with_next(GameState.BEER)  # the next glass is beer
+	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + 0.1)
+	main.glass.receive(Main.GLASS_POS.x, main.glass.target, 0.0)
+	main.glass.tilt = 0.4
+	main.glass._tilt_idle = 0.0
+
+
+func _serve_waits_for_an_upright_glass() -> void:
+	_tipped_beer_glass()
+	var served: int = main.results.size()
+	main.request_serve()
+	main.tick(DT, false)
+	expect(main.results.size() == served and main.is_serve_queued(), "a serve waits while the glass is tipped")
+	var t := DT
+	while main.results.size() == served and t < 2.0:
+		main.tick(DT, false)
+		t += DT
+	expect(main.results.size() == served + 1 and t >= Glass.TILT_GRACE, "...and fires once it is upright (%.2f s)" % t)
+
+
+func _last_call_waits_for_an_upright_glass() -> void:
+	_tipped_beer_glass()
+	main._enter(Main.Phase.LAST_CALL)
+	main._idle = 0.0
+	var served: int = main.results.size()
+	var t := 0.0
+	while main.results.size() == served and t < Main.LAST_CALL_IDLE + 2.0:
+		main.tick(DT, false)
+		t += DT
+	expect(t >= Main.LAST_CALL_IDLE + Glass.TILT_GRACE, "last call's idle starts once the glass is upright (served at %.2f s)" % t)
+	expect(main.results.size() == served + 1 and t < Main.LAST_CALL_IDLE + 1.0, "...then it auto-serves (%.2f s)" % t)

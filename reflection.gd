@@ -31,6 +31,7 @@ func _draw_mirror() -> void:
 	var flip := Transform2D(Vector2(1, 0), Vector2(0, -1), Vector2(0, 2.0 * STRIP.position.y))
 	for v: Node2D in [glass, pourer]:
 		if v != null and v.visible and v.get("def") != null:
-			_mirror.draw_set_transform_matrix(flip * v.transform)
+			var drawn := v.transform * (v as Glass).frame() if v is Glass else v.transform
+			_mirror.draw_set_transform_matrix(flip * drawn)
 			v.draw_reflection(_mirror)
 	_mirror.draw_set_transform_matrix(Transform2D.IDENTITY)

@@ -313,10 +313,10 @@ func tick(dt: float, hold: bool) -> void:
 		time_left = maxf(time_left - dt, 0.0)
 		if time_left <= 0.0:
 			_on_time_up()
-	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy():
+	if _serve_queued and not is_swapping() and not pourer.is_pouring() and stream.is_empty() and not glass.garnish_busy() and glass.is_upright():
 		_serve()
 	if phase == Phase.LAST_CALL and not is_swapping():
-		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty() or glass.garnish_busy():
+		if hold or pourer.is_pouring() or pourer.is_busy() or not stream.is_empty() or glass.garnish_busy() or not glass.is_upright():
 			_idle = 0.0
 		else:
 			_idle += dt
@@ -330,6 +330,7 @@ func _step_sim(dt: float, hold: bool) -> void:
 	var out := pourer.step(dt, hold)
 	if out > 0.0:
 		stream.emit(pourer.global_position, pourer.exit_velocity(), out, dt)
+	glass.step_tilt(dt, (hold and not pourer.is_busy()) or pourer.is_pouring() or not stream.is_empty())
 	stream.step(dt, glass)
 	glass.step(dt)
 

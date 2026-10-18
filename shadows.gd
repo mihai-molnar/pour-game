@@ -1,8 +1,9 @@
 class_name Shadows
 extends Node2D
-## Soft contact shadows on the counter under the glass (and the pourer when it
-## is near the counter), drawn in world space beneath both so they don't lean
-## or tilt with them. Visual only; redrawn every frame.
+## Soft contact shadows on the counter under the glass (fading as a tipped
+## glass lifts off it) and the pourer when it is near the counter, drawn in
+## world space beneath both so they don't lean or tilt with them. Visual only;
+## redrawn every frame.
 
 ## The pourer's shadow fades out as its lowest point lifts this far above the counter (px).
 const POURER_FADE := 45.0
@@ -18,7 +19,17 @@ func _process(_dt: float) -> void:
 func _draw() -> void:
 	if glass != null and glass.visible and glass.def != null:
 		var foot := glass.outer_x_at(-0.5)
-		VesselArt.draw_soft_ellipse(self, glass.position + Vector2(0, 0.3), Vector2((foot.y - foot.x) * 0.68, 2.4), Color(Palette.INK, 0.6))
+		var size := Vector2((foot.y - foot.x) * 0.68, 2.4)
+		if glass.is_upright():
+			VesselArt.draw_soft_ellipse(self, glass.position + Vector2(0, 0.3), size, Color(Palette.INK, 0.6))
+		else:  # a glass tipped while pouring lifts off the counter: under its lowest point, fading
+			var low := Vector2(0.0, -INF)
+			for p in Transform2D(0.0, glass.position) * glass.frame() * glass.outer:
+				if p.y > low.y:
+					low = p
+			var k := clampf(1.0 - (glass.position.y - low.y) / POURER_FADE, 0.0, 1.0)
+			if k > 0.0:
+				VesselArt.draw_soft_ellipse(self, Vector2(low.x, glass.position.y + 0.3), size * Vector2(k, 1.0), Color(Palette.INK, 0.6 * k))
 	if pourer != null and pourer.visible and pourer.def != null:
 		var pts := pourer.transform * pourer.def.pourer_outer
 		var box := Rect2(pts[0], Vector2.ZERO)
