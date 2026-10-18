@@ -15,8 +15,9 @@ const MARGIN := 2.0
 const TOP_GRACE := 2.0
 ## The steepest tilt past rest (°) a pourer reaches on its first two glasses
 ## from full (measured with the autopilot: pitcher 48° then up to 68°, bottle
-## up to 54°); the third glass from a pourer may tip further.
-const COMMON_TILT := {&"water": 70.0, &"wine": 55.0}
+## up to 54°; a beer bottle, one per glass, up to 49°); the third glass from a
+## pourer may tip further.
+const COMMON_TILT := {&"water": 70.0, &"wine": 55.0, &"beer": 50.0}
 ## The widest the coin pill gets in play (4-digit coins and x2.5).
 const COIN_PILL_W := 110.0
 
@@ -42,9 +43,15 @@ func run() -> void:
 	var pourer_room := Rect2(inner.position.x, view.position.y - TOP_GRACE, inner.size.x, inner.end.y - view.position.y + TOP_GRACE)
 	var coin_pill := [_rect_poly(Rect2(Hud.PILL_AT, Vector2(COIN_PILL_W, Hud.PILL_H)))]
 	var pills := coin_pill + [_rect_poly(Hud.TIMER_PILL)]
-	for d: DrinkDef in [GameState.WATER, GameState.WINE]:
+	for d: DrinkDef in GameState.DRINKS:
 		var glass := Transform2D(0.0, Main.GLASS_POS) * d.glass_outer
 		expect(inner.encloses(_box(glass)) and not _behind_pill(main, glass, pills), "%s glass fits, clear of the HUD" % d.id)
+		if d.glass_pour_tilt_deg > 0.0:  # held tipped while pouring
+			main.glass.setup(d)
+			main.glass.tilt = deg_to_rad(d.glass_pour_tilt_deg)
+			var tipped := Transform2D(0.0, Main.GLASS_POS) * main.glass.frame() * d.glass_outer
+			expect(inner.encloses(_box(tipped)) and not _behind_pill(main, tipped, pills), "%s glass tipped to pour fits, clear of the HUD" % d.id)
+			main.glass.tilt = 0.0
 		var lip := Main.GLASS_POS + d.pourer_offset
 		var tilt := 0.0
 		while tilt <= COMMON_TILT[d.id]:

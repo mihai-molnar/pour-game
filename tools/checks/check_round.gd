@@ -37,6 +37,8 @@ func run() -> void:
 	_serve_waits_for_an_upright_glass()
 	_last_call_waits_for_an_upright_glass()
 	_beer_brings_a_new_bottle()
+	_beer_round_with_autopilot()
+	_beer_earns_at_least_wine()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -618,3 +620,43 @@ func _beer_brings_a_new_bottle() -> void:
 	_run(Arrival.ARRIVE_TIME + Pourer.POP_TIME + DT)
 	_serve_with_next(GameState.WINE)
 	expect(not main.pourer.is_arriving(), "wine still keeps its bottle across glasses")
+
+
+## A round of only `d`, played by the autopilot: its results, coins and how
+## many bottles were opened.
+func _round_of(d: DrinkDef, seed_value: int) -> Dictionary:
+	GameState.reset_session(seed_value)
+	if not GameState.owned_drinks.has(d):
+		GameState.owned_drinks.append(d)
+	GameState.menu.assign([d])
+	main.start_round()
+	var pilot := Autopilot.new()
+	var pops := [0]
+	var count := func(_a: Vector2, _v: Vector2, _c: Color) -> void: pops[0] += 1
+	main.pourer.popped.connect(count)
+	var t := 0.0
+	while main.phase != Main.Phase.SHOP and t < 60.0:
+		var dec := pilot.decide(main)
+		if dec.serve:
+			main.request_serve()
+		main.tick(DT, dec.hold)
+		t += DT
+	main.pourer.popped.disconnect(count)
+	return {"results": main.results.duplicate(), "coins": main.round_stats.coins, "pops": pops[0]}
+
+
+## The autopilot feathers beer: mostly GOOD or better, no spill, a bottle per glass.
+func _beer_round_with_autopilot() -> void:
+	var r := _round_of(GameState.BEER, 5)
+	var bands: Array = r.results.map(func(x: Dictionary) -> StringName: return x.band)
+	var good := bands.filter(func(b: StringName) -> bool: return b == Scoring.PERFECT or b == Scoring.GOOD)
+	expect(bands.size() >= 3, "the autopilot serves at least 3 beers in a round (%d)" % bands.size())
+	expect(good.size() * 10 >= bands.size() * 6 and not bands.has(Scoring.SPILL), "...mostly GOOD or better, no spill (%s)" % [bands])
+	expect(r.pops >= bands.size(), "each beer had its own bottle (%d caps for %d glasses)" % [r.pops, bands.size()])
+
+
+## Beer is worth its 150 coins: a round of it earns at least a round of wine.
+func _beer_earns_at_least_wine() -> void:
+	var wine := _round_of(GameState.WINE, 5)
+	var beer := _round_of(GameState.BEER, 5)
+	expect(beer.coins >= wine.coins, "a round of beer earns at least a round of wine (%d vs %d)" % [beer.coins, wine.coins])

@@ -497,3 +497,52 @@ func _sweep(drink_id: String) -> void:
 				(glass.volume - at_release) / glass.capacity * 100.0, t - h, roundi(glass.spilled + stream.spilled),
 			])
 			h += 0.2
+	if d.has_foam():
+		_sweep_feathered(d)
+
+
+## Beer: feathered pours like the autopilot's (DOWN on while the flow is under
+## an aim, off above it) released where the autopilot releases, from a full
+## bottle; then flat out (DOWN held). Per row: when DOWN was let go for good,
+## when the glass stood up, the beer's rows over (+) or under (-) the line
+## then, 2 s later and 6 s later, the head in fingers then, what ran over the rim and
+## what missed the glass (px²), what was left in the bottle, and the steepest
+## bottle tilt past rest.
+func _sweep_feathered(d: DrinkDef) -> void:
+	var dt := 1.0 / 60.0
+	var share: float = Autopilot.new().release_at[d.id]
+	print("-- feathered from a full bottle, released at %d%% of the line once drained --" % roundi(share * 100.0))
+	print("aim_flow  stop_s  up_s  rows_up  rows_2s  rows_6s  fingers  over_rim  missed  bottle_left%  peak_deg")
+	for aim in [200, 300, 400, 500, 600, 700, 800, 900, 1000, -1]:
+		stream.clear()
+		stream.spilled = 0.0
+		glass.reset()
+		glass.place(GLASS_POS)
+		pourer.reset()
+		var t := 0.0
+		var stop := -1.0
+		var up := -1.0
+		var rows_up := 0
+		var rows_2s := 0
+		var fingers := 0.0
+		var peak := 0.0
+		while t < 25.0:
+			if stop < 0.0 and Autopilot.beer_coming(glass, stream, pourer) >= glass.target * share:
+				stop = t
+			var hold: bool = stop < 0.0 and (aim < 0 or Autopilot.feather(pourer, aim))
+			_step_sim(dt, hold)
+			peak = maxf(peak, pourer.tilt)
+			t += dt
+			if stop >= 0.0 and up < 0.0 and not pourer.is_pouring() and stream.is_empty() and glass.is_upright():
+				up = t
+				rows_up = roundi(glass.target_y()) - roundi(glass.surface_level(glass.volume))
+				fingers = (glass.surface_level(glass.volume) - glass.foam_level()) / Foam.FINGER
+			if up >= 0.0 and rows_2s == 0 and t >= up + 2.0:
+				rows_2s = roundi(glass.target_y()) - roundi(glass.surface_level(glass.volume)) + 1000
+			if up >= 0.0 and t >= up + 6.0:
+				break
+		print("%8s  %6.2f  %4.1f  %+7d  %+7d  %+7d  %7.1f  %8d  %6d  %12.1f  %8d" % [
+			"flat out" if aim < 0 else str(aim), stop, up, rows_up, rows_2s - 1000,
+			roundi(glass.target_y()) - roundi(glass.surface_level(glass.volume)), fingers,
+			roundi(glass.spilled), roundi(stream.spilled), pourer.volume / pourer.full_volume * 100.0, roundi(rad_to_deg(peak)),
+		])

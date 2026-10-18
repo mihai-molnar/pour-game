@@ -284,29 +284,50 @@ func calm_y(x: float, level: float) -> float:
 ## calm_y): each pixel column's run below the line. At tilt 0 this is what
 ## level_for inverts.
 func _area_below(level: float) -> float:
+	return _area_and_width(level).x
+
+
+## (area under the level line of height `level`, how many columns it crosses —
+## the rate the area changes as the line moves).
+func _area_and_width(level: float) -> Vector2:
 	var k := tan(tilt)
 	var total := 0.0
+	var width := 0.0
+	var y := level - k * (_x0 + 0.5 - _mouth.x)
 	for c in _col_top.size():
 		var top := float(_col_top[c])
 		var bottom := float(_col_bottom[c])
-		if bottom <= top:
-			continue
-		var y := level - k * (_x0 + c + 0.5 - _mouth.x)
-		total += clampf(bottom - maxf(y, top), 0.0, bottom - top)
-	return total
+		if bottom > top:
+			if y <= top:
+				total += bottom - top
+			elif y < bottom:
+				total += bottom - y
+				width += 1.0
+		y -= k
+	return Vector2(total, width)
 
 
-## The height (at the mouth's x) of the tipped glass's level surface holding `vol`.
+## The height (at the mouth's x) of the tipped glass's level surface holding
+## `vol`: Newton steps on the (piecewise linear) area, kept inside a shrinking
+## bracket, starting from the upright level.
 func _sloped_level(vol: float) -> float:
-	var lo := float(_y0) - 80.0
-	var hi := _floor_y + 80.0
-	for i in 22:
-		var mid := (lo + hi) * 0.5
-		if _area_below(mid) > vol:
-			lo = mid
+	var lo := float(_y0) - 80.0  # the area under a line this high is >= vol
+	var hi := _floor_y + 80.0  # ...and under this one, 0
+	var level := level_for(vol)
+	for i in 40:
+		var aw := _area_and_width(level)
+		var diff := aw.x - vol
+		if absf(diff) < 1e-4:
+			break
+		if diff > 0.0:
+			lo = level
 		else:
-			hi = mid
-	return (lo + hi) * 0.5
+			hi = level
+		var next := level + diff / aw.y if aw.y > 0.0 else (lo + hi) * 0.5
+		if next <= lo or next >= hi:
+			next = (lo + hi) * 0.5
+		level = next
+	return level
 
 
 ## Tips the glass toward the pourer while `pouring` (DOWN held, beer flowing
@@ -344,15 +365,17 @@ func frame() -> Transform2D:
 	return Transform2D(tilt, _mouth - _mouth.rotated(tilt))
 
 
-## Where liquid moving from `prev_world` to `world` is relative to the tipped
-## opening: 0 still above it, 1 it crossed between the lips (it's in), 2 it
-## crossed outside them (missed).
+## Where liquid moving from `prev_world` to `world` (and not in yet) is
+## relative to the tipped opening: 0 still above it, 1 it crossed between the
+## lips (it's in), 2 it crossed outside them (missed). The rim turns as the
+## glass straightens, so it may have passed the liquid rather than the other
+## way round: then it is judged where it is now.
 func entry(prev_world: Vector2, world: Vector2) -> int:
-	var a := to_glass(prev_world)
 	var b := to_glass(world)
-	if not (a.y < _y0 and b.y >= _y0):
+	if b.y < _y0:
 		return 0
-	var x := lerpf(a.x, b.x, (_y0 - a.y) / (b.y - a.y))
+	var a := to_glass(prev_world)
+	var x := lerpf(a.x, b.x, (_y0 - a.y) / (b.y - a.y)) if a.y < _y0 else b.x
 	return 1 if x > _row_left[0] and x < _row_right[0] + 1 else 2
 
 

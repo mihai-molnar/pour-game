@@ -19,6 +19,7 @@ func run() -> void:
 	var straight := Stream.ribbon(PackedVector2Array([Vector2(5, 0), Vector2(5, 8)]), PackedFloat32Array([2.0, 2.0]))
 	expect(straight[0].is_equal_approx(Vector2(6, 0)) or straight[0].is_equal_approx(Vector2(4, 0)), "a vertical stream's edges sit width/2 to the sides (%s)" % straight[0])
 	_tipped_pour()
+	_rim_turning_past_a_drop()
 
 
 ## A feathered beer pour: the glass tips while it pours and stands up after;
@@ -60,3 +61,23 @@ func _edge_gap(p: Vector2, poly: PackedVector2Array) -> float:
 	for i in poly.size():
 		best = minf(best, p.distance_to(Geometry2D.get_closest_point_to_segment(p, poly[i], poly[(i + 1) % poly.size()])))
 	return best
+
+
+## The tipped glass straightens as it fills, so its rim can turn past a drop
+## between two ticks: the drop is in, not missed.
+func _rim_turning_past_a_drop() -> void:
+	var main: Main = load("res://main.tscn").instantiate()
+	add_child(main)
+	main.manual = true
+	var beer: DrinkDef = GameState.BEER
+	var glass := main.glass
+	glass.setup(beer)
+	glass.place(Main.GLASS_POS)
+	glass.tilt = deg_to_rad(27.0)
+	var at := glass.from_glass(Vector2(2.5, glass._y0 - 0.002))  # just above the opening
+	main.stream._spawn(at, Vector2(-38.0, 180.0), 5.0, 0.0)
+	glass.tilt = deg_to_rad(26.9)  # the rim turns past it
+	main.stream.step(DT, glass)
+	var p: Stream.Parcel = main.stream._parcels[0] if not main.stream._parcels.is_empty() else null
+	expect(p == null or p.state == 1, "a drop the rim turned past is in the glass (state %d)" % (p.state if p != null else -1))
+	main.free()

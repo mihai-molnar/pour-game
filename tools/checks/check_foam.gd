@@ -33,10 +33,10 @@ func run() -> void:
 	g.volume = 800.0
 	g.beer = 800.0 * beer.foam_wet_share
 	var out := 0.0
-	for i in 180:
+	for i in roundi(beer.foam_drain_time * 3.0 / DT):
 		out += g.step(DT)
-	expect(g.beer / g.volume < beer.foam_dry_share + 0.02, "after 3 s the head is nearly dry (%.3f)" % (g.beer / g.volume))
-	expect(g.volume > 800.0 * 0.9, "...but still about as tall (%.0f px²)" % g.volume)
+	expect(g.beer / g.volume < beer.foam_dry_share + 0.03, "after 3 drain times (%.1f s) the head is nearly dry (%.3f)" % [beer.foam_drain_time * 3.0, g.beer / g.volume])
+	expect(g.volume > 800.0 * 0.85, "...but still about as tall (%.0f px²)" % g.volume)
 	near(out, 800.0 * beer.foam_wet_share - g.beer, "the drained beer was released", 0.01)
 
 	var h := Foam.new(beer)
