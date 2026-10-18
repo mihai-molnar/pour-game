@@ -121,6 +121,11 @@ func run() -> void:
 	for i in 180:
 		fx.step(1.0 / 60.0)
 	eq(fx.count(), 0, "effects are gone after 3 s")
+	fx.splash(Vector2(100, 200), Palette.WATER)
+	expect(fx.count() >= 3 and fx.count() <= 6, "a splash is 3-6 droplets (%d)" % fx.count())
+	for i in 180:
+		fx.step(1.0 / 60.0)
+	eq(fx.count(), 0, "...gone after 3 s")
 	for i in 100:
 		fx.puff(Vector2(100, 100))
 	expect(fx.count() <= Effects.MAX_BITS, "effects are capped (%d)" % fx.count())

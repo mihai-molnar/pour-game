@@ -39,10 +39,11 @@ const ICE_DROP_Y := -215.0
 ## How far the lime drops onto the rim (px).
 const LIME_DROP_PX := 14.0
 ## The lime wedge: radius (px) and turn (rad; peel up and out to the left).
-const LIME_RADIUS := 7.0
-const LIME_ANGLE := -0.75
-## Per cube: x nudge (px), resting tilt (rad), tumble while falling (rad).
-const CUBE_LOOKS := [Vector3(-0.6, -0.14, 2.6), Vector3(0.4, 0.09, -3.1), Vector3(0.2, -0.05, 1.9)]
+const LIME_RADIUS := 9.0
+const LIME_ANGLE := -0.7
+## Per cube: x nudge (px), resting tilt (rad), tumble while falling (rad), how
+## much deeper it floats (px) — so the cubes don't line up like soldiers.
+const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4), Vector4(0.2, -0.05, 1.9, 0.9)]
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -564,13 +565,13 @@ func _cube_poses(g: GarnishDef) -> Array[Vector3]:
 	var left := float(_row_left[r]) + s * 0.5 + 0.6
 	var right := float(_row_right[r] + 1) - s * 0.5 - 0.6
 	for i in g.cube_count:
-		var look: Vector3 = CUBE_LOOKS[i % CUBE_LOOKS.size()]
+		var look: Vector4 = CUBE_LOOKS[i % CUBE_LOOKS.size()]
 		var x := lerpf(left, right, float(i) / maxf(g.cube_count - 1, 1)) + look.x
 		var c := clampi(floori(x) - _x0, 0, _wave_h.size() - 1)
 		var y := bottom - s * 0.5
 		var angle := look.y
 		if volume >= 0.5 and bottom < _floor_y:  # afloat: ride the waves, drift a little
-			y -= _wave_h[c]
+			y += minf(look.w, _floor_y - bottom) - _wave_h[c]
 			var l := _wave_h[maxi(c - 2, 0)]
 			var rr := _wave_h[mini(c + 2, _wave_h.size() - 1)]
 			angle += (l - rr) * 0.12 + sin(_clock * 1.3 + i * 2.1) * 0.04
@@ -585,7 +586,7 @@ func _cube_poses(g: GarnishDef) -> Array[Vector3]:
 
 ## Where the lime's slit sits on the left rim (local).
 func _lime_slit() -> Vector2:
-	return Vector2(outer_x_at(float(_y0)).x + 1.5, float(_y0))
+	return Vector2(outer_x_at(float(_y0)).x + 2.0, float(_y0))
 
 
 ## How far above the rim the lime is drawn while it drops and bounces.

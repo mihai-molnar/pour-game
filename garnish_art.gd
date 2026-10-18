@@ -19,11 +19,11 @@ static func ice_outline(center: Vector2, size: float, angle: float) -> PackedVec
 ## The cube itself: clear and frosty, lighter toward its top-left, a faint
 ## shade along the bottom-right.
 static func draw_ice_body(ci: CanvasItem, center: Vector2, size: float, angle: float) -> void:
-	ci.draw_colored_polygon(ice_outline(center, size, angle), Color(Palette.FROST, 0.28))
+	ci.draw_colored_polygon(ice_outline(center, size, angle), Color(Palette.FROST.lerp(Palette.WATER_LIGHT, 0.2), 0.34))
 	var lit := Vector2(-0.12, -0.12).rotated(angle) * size
-	ci.draw_colored_polygon(ice_outline(center + lit, size * 0.62, angle), Color(Palette.WHITE, 0.14))
+	ci.draw_colored_polygon(ice_outline(center + lit, size * 0.62, angle), Color(Palette.WHITE, 0.2))
 	var shade := Vector2(0.16, 0.16).rotated(angle) * size
-	ci.draw_colored_polygon(ice_outline(center + shade, size * 0.5, angle), Color(Palette.STEEL, 0.12))
+	ci.draw_colored_polygon(ice_outline(center + shade, size * 0.5, angle), Color(Palette.WATER_LIGHT, 0.08))
 
 
 ## The cube's edges: a soft outline, a bright glint along its top-left and a

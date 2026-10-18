@@ -2,7 +2,7 @@ class_name Effects
 extends Node2D
 ## Short-lived soft effects that outlive what caused them: the puff a
 ## vanishing glass or pourer leaves, dust where an arrival lands on the
-## counter, a popped cork and its spray. Visual only — it uses randf and never
+## counter, a popped cork and its spray, the splash of ice landing. Visual only — it uses randf and never
 ## feeds back into gameplay. Main steps it from tick() so it keeps pace with
 ## the simulation.
 
@@ -42,6 +42,13 @@ func dust(at: Vector2) -> void:
 	for i in 3:
 		_add(at + Vector2(randf_range(-3.0, 3.0), -1.0), Vector2(randf_range(-40.0, 40.0), -randf_range(10.0, 30.0)),
 			0.3, 0.5, Palette.SAND, 200.0, Kind.DOT)
+
+
+## Ice landing in liquid: 3-6 drops of `color` thrown up and out from `at`.
+func splash(at: Vector2, color: Color) -> void:
+	for i in randi_range(3, 6):
+		var v := Vector2(randf_range(-45.0, 45.0), -randf_range(50.0, 95.0))
+		_add(at + Vector2(randf_range(-6.0, 6.0), 0.0), v, 0.5, randf_range(0.4, 0.7), color, GRAVITY, Kind.DOT)
 
 
 ## The width (px) of a popped cork — the same cork the bottle's mouth was showing.

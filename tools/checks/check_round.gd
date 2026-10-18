@@ -31,6 +31,9 @@ func run() -> void:
 	_picks_follow_the_seed()
 	_drink_change_swaps_the_pourer()
 	_mixed_round_with_autopilot()
+	_garnish_keys_follow_the_rules()
+	_serve_waits_for_falling_ice_and_pays_more()
+	_iced_round_with_autopilot()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -442,3 +445,99 @@ func _mixed_round_with_autopilot() -> void:
 		if r.band == Scoring.PERFECT or r.band == Scoring.GOOD:
 			good += 1
 	expect(good * 2 >= main.results.size(), "the autopilot lands most glasses GOOD or better (%d of %d)" % [good, main.results.size()])
+
+
+func _own_garnishes() -> void:
+	GameState.coins = 25
+	GameState.buy_garnish(GameState.WATER.garnishes[0])
+	GameState.buy_garnish(GameState.WATER.garnishes[1])
+
+
+func _garnish_keys_follow_the_rules() -> void:
+	_fresh()
+	expect(not main.try_garnish(KEY_UP), "nothing during INTRO")
+	_run(Main.INTRO_TIME + DT)
+	expect(not main.try_garnish(KEY_UP), "nothing before buying ice")
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint before buying")
+	GameState.coins = 10
+	GameState.buy_garnish(GameState.WATER.garnishes[0])
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   UP  ice   ·   SPACE  serve   ·   F1  debug", "the hint names ice once bought")
+	GameState.coins = 15
+	GameState.buy_garnish(GameState.WATER.garnishes[1])
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   UP  ice   ·   LEFT  lime   ·   SPACE  serve   ·   F1  debug", "...and lime")
+	expect(main.try_garnish(KEY_UP) and not main.try_garnish(KEY_UP), "UP adds ice once")
+	expect(main.try_garnish(KEY_LEFT) and not main.try_garnish(KEY_DOWN), "LEFT adds lime; other keys don't")
+	_run(Glass.ICE_FALL_TIME + DT)  # a serve waits for falling ice
+	_serve_with_next(GameState.WATER)
+	expect(not main.try_garnish(KEY_UP), "nothing while the next glass arrives")
+	_run(0.5)
+	expect(main.glass.garnishes.is_empty() and main.try_garnish(KEY_UP), "the next glass arrives bare and takes ice")
+	_run(Glass.ICE_FALL_TIME + DT)
+	GameState.coins = 80
+	GameState.buy_drink(GameState.WINE)
+	_serve_with_next(GameState.WINE)
+	_run(0.6)
+	expect(not main.try_garnish(KEY_UP) and not main.try_garnish(KEY_LEFT), "wine takes no garnish")
+	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint on wine")
+	main.time_left = 0.01
+	_run(6.0)
+	expect(main.phase == Main.Phase.SUMMARY and not main.try_garnish(KEY_UP), "nothing on the summary")
+	main.open_shop()
+	expect(not main.try_garnish(KEY_UP) and not main.try_garnish(KEY_LEFT), "nothing in the shop")
+	main.next_round()
+	_run(Main.INTRO_TIME + DT)
+	expect(main.glass.garnishes.is_empty(), "nothing carried into the next round")
+
+
+func _serve_waits_for_falling_ice_and_pays_more() -> void:
+	_to_playing()
+	_own_garnishes()
+	main.try_garnish(KEY_UP)
+	main.try_garnish(KEY_LEFT)
+	main.glass.receive(Main.GLASS_POS.x, main.glass.target * 0.5, 0.0)
+	main.request_serve()
+	main.tick(DT, false)
+	expect(main.results.is_empty(), "a serve waits while the ice falls")
+	_run(Glass.ICE_FALL_TIME)
+	eq(main.results.size(), 1, "...and fires once it has landed")
+	if main.results.size() == 1:
+		eq(main.results[0].garnishes, [&"ice", &"lime"], "the score records both garnishes")
+	_run(0.5)
+	main.try_garnish(KEY_UP)
+	main.try_garnish(KEY_LEFT)
+	_run(Glass.ICE_FALL_TIME + DT)
+	var g := main.glass
+	g.receive(Main.GLASS_POS.x, g.target - g.displaced(g.target), 0.0)
+	main.streak = 0
+	main.request_serve()
+	main.tick(DT, false)
+	if main.results.size() == 2:
+		eq([main.results[1].band, main.results[1].coins], [Scoring.PERFECT, 15], "a PERFECT iced lime water pays 15")
+	else:
+		expect(false, "the second garnished glass was served")
+
+
+func _iced_round_with_autopilot() -> void:
+	_fresh()
+	GameState.coins = 120
+	Autopilot.new().shop(main)
+	expect(GameState.owns_garnish(GameState.WATER.garnishes[1]) and GameState.owns_drink(GameState.WINE), "the autopilot buys ice, lime, wine")
+	GameState.set_on_menu(GameState.WINE, false)
+	main.start_round()
+	var pilot := Autopilot.new()
+	var t := 0.0
+	while main.phase != Main.Phase.SUMMARY and t < 60.0:
+		var d := pilot.decide(main)
+		for k in d.keys:
+			main.try_garnish(k)
+		if d.serve:
+			main.request_serve()
+		main.tick(DT, d.hold)
+		t += DT
+	var garnished := 0
+	var good := 0
+	for r in main.results:
+		garnished += 1 if r.garnishes.size() == 2 else 0
+		good += 1 if r.band == Scoring.PERFECT or r.band == Scoring.GOOD else 0
+	expect(main.results.size() >= 4 and garnished == main.results.size(), "every autoplayed water glass is iced and limed (%d of %d)" % [garnished, main.results.size()])
+	expect(good * 2 >= main.results.size(), "...and most land GOOD or better (%d of %d)" % [good, main.results.size()])
