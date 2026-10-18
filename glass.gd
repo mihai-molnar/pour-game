@@ -110,6 +110,9 @@ var tilt := 0.0
 var _tilt_idle := TILT_GRACE  # seconds since the pour last wanted it tipped
 var _lean := 0.0  # the arrival's lean (rad)
 var _mouth := Vector2.ZERO  # local: the middle of the opening, what it tips about
+var _foam_seed := 0.0  # the head's lumpy top and bubbles (visual)
+var _fizz_x := PackedFloat32Array()  # where beer's fizz rises from the floor (local x; visual)
+var _fizz_due := 0.0
 
 @onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
@@ -164,6 +167,15 @@ func reset() -> void:
 	ice = null
 	foam = Foam.new(def) if def != null and def.has_foam() else null
 	_foam_level = _level
+	_foam_seed = randf() * TAU
+	_fizz_x.clear()
+	_fizz_due = 0.0
+	if def != null and def.fizz > 0.0:
+		var r := _row_area.size() - 1
+		while r > 0 and _row_area[r] == 0:
+			r -= 1
+		for i in randi_range(3, 5):
+			_fizz_x.append(randf_range(_row_left[r] + 1.0, _row_right[r]))
 
 
 ## Adds a garnish: ice starts falling, the lime starts dropping onto the rim.
@@ -565,19 +577,24 @@ func liquid_polygon() -> PackedVector2Array:
 	return best
 
 
-## The head as drawn (local): from the liquid's wavy surface up to the calm
-## top of the head, cut to the rounded inside. Empty when there is (next to) none.
+## The head as drawn (local): from the liquid's wavy surface up to the head's
+## lumpy top, cut to the rounded inside. Empty when there is (next to) none.
 func foam_polygon() -> PackedVector2Array:
 	if foam == null or foam.volume < 0.5:
 		return PackedVector2Array()
 	var n := _col_top.size()
 	var top := _foam_level
-	var shape := PackedVector2Array([Vector2(_x0 - 1.0, calm_y(_x0 - 1.0, top)), Vector2(_x0 + n + 1.0, calm_y(_x0 + n + 1.0, top))])
-	shape.append(Vector2(_x0 + n + 1.0, maxf(calm_y(_x0 + n + 1.0, _level) - _wave_h[n - 1], calm_y(_x0 + n + 1.0, top))))
+	var shape := PackedVector2Array()
+	var x := float(_x0) - 1.0
+	while x <= _x0 + n + 1.0:  # the lumpy top, left to right
+		shape.append(Vector2(x, calm_y(x, top) - FoamArt.bump(x, _foam_seed)))
+		x += 1.0
+	# ...then back along the beer's wavy surface (never above the lumps).
+	shape.append(Vector2(_x0 + n + 1.0, maxf(calm_y(_x0 + n + 1.0, _level) - _wave_h[n - 1], calm_y(_x0 + n + 1.0, top) + 0.8)))
 	for c in range(n - 1, -1, -1):
-		var x := _x0 + c + 0.5
-		shape.append(Vector2(x, maxf(calm_y(x, _level) - _wave_h[c], calm_y(x, top))))
-	shape.append(Vector2(_x0 - 1.0, maxf(calm_y(_x0 - 1.0, _level) - _wave_h[0], calm_y(_x0 - 1.0, top))))
+		var cx := _x0 + c + 0.5
+		shape.append(Vector2(cx, maxf(calm_y(cx, _level) - _wave_h[c], calm_y(cx, top) + 0.8)))
+	shape.append(Vector2(_x0 - 1.0, maxf(calm_y(_x0 - 1.0, _level) - _wave_h[0], calm_y(_x0 - 1.0, top) + 0.8)))
 	var best := PackedVector2Array()
 	var best_area := 0.5
 	for poly in Geometry2D.intersect_polygons(_drawn_interior, shape):
@@ -669,7 +686,7 @@ func receive_local(x: float, vol: float, speed: float) -> void:
 		_wave_v[c - 1] -= kick * 0.5
 	if c < _wave_v.size() - 1:
 		_wave_v[c + 1] -= kick * 0.5
-	if randf() < vol * speed * 0.0004 and _bubbles.size() < 40:
+	if randf() < vol * speed * 0.0004 * (3.0 if def.fizz > 0.0 else 1.0) and _bubbles.size() < _bubble_cap():
 		# Spawn under the impact, but never deeper than this column's floor.
 		var bc := clampi(c + randi_range(-2, 2), 0, _col_top.size() - 1)
 		var top := _surface_local(bc) + 2.0
@@ -679,12 +696,20 @@ func receive_local(x: float, vol: float, speed: float) -> void:
 			_bubbles.append(Vector3(float(_x0 + bc) + 0.5, y, randf_range(8.0, 22.0)))
 
 
+## How many bubbles it shows at most: more for a fizzy drink.
+func _bubble_cap() -> int:
+	return 120 if def.fizz > 0.0 else 40
+
+
 ## Liquid beyond max_liquid() spills over the rim and runs down the outside;
-## a head on top runs over first.
+## a head on top runs over first (its drips are foam: side ±2).
 func _overflow() -> void:
 	var room := max_liquid()
 	if foam != null:
-		spilled += foam.spill(room - volume)
+		var lost := foam.spill(room - volume)
+		spilled += lost
+		if lost > 0.0 and _drips.size() < 30:
+			_drips.append(Vector3(2.0 if randf() < 0.5 else -2.0, float(_y0), randf_range(20.0, 40.0)))
 	if volume > room:
 		spilled += volume - room
 		volume = room
@@ -748,6 +773,18 @@ func step(dt: float) -> void:
 
 	if ice != null:
 		ice.step(dt, interior, _surface_at)
+
+	if def.fizz > 0.0 and volume >= 0.5 and not _fizz_x.is_empty():  # beer fizzes all the time
+		_fizz_due += def.fizz * dt
+		while _fizz_due >= 1.0:
+			_fizz_due -= 1.0
+			if _bubbles.size() >= _bubble_cap():
+				break
+			var fx := _fizz_x[randi() % _fizz_x.size()] + randf_range(-0.6, 0.6)
+			var fc := clampi(floori(fx) - _x0, 0, n - 1)
+			var fy := float(_col_bottom[fc]) - randf_range(0.6, 1.6)
+			if fy > _surface_local(fc) + 1.0:
+				_bubbles.append(Vector3(float(_x0 + fc) + 0.5, fy, randf_range(6.0, 14.0)))
 
 	for i in range(_bubbles.size() - 1, -1, -1):
 		var b := _bubbles[i]
@@ -876,6 +913,11 @@ func _draw_front(ci: CanvasItem) -> void:
 	var box := Rect2(_drawn_outer[0], Vector2.ZERO)
 	for p in _drawn_outer:
 		box = box.expand(p)
+	var head := foam_polygon()
+	if not head.is_empty():
+		var top := _foam_level
+		var depth := func(p: Vector2) -> float: return (p.y - calm_y(p.x, top)) / maxf(_level - top, 1.0)
+		FoamArt.draw(ci, head, depth, def.liquid_color, _foam_seed)
 	for wall in _walls:
 		VesselArt.draw_hgradient(ci, wall, box.position.x, box.end.x, VesselArt.clear_glass_walls())
 	for g in garnishes:
@@ -890,7 +932,9 @@ func _draw_front(ci: CanvasItem) -> void:
 			var y := calm_y(_x0 + c + 0.5, _level) - _wave_h[c]
 			if y >= _col_top[c] and y < _col_bottom[c]:
 				surface.append(Vector2(_x0 + c + 0.5, y))
-		if surface.size() >= 2:
+		if surface.size() >= 2 and not head.is_empty():  # where the beer meets its head: a thin wet line
+			ci.draw_polyline(surface, Color(def.liquid_highlight, 0.6), 0.45, true)
+		elif surface.size() >= 2:
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.9), 0.45, true)
 	var fizz := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
@@ -916,7 +960,8 @@ func _draw_front(ci: CanvasItem) -> void:
 	# Drips running down the outside after an overflow.
 	for d in _drips:
 		var walls := outer_x_at(d.y)
-		ci.draw_circle(Vector2(walls.y + 0.4 if d.x > 0.0 else walls.x - 0.4, d.y), 0.7, def.liquid_highlight)
+		var color := Palette.FOAM if absf(d.x) > 1.5 else def.liquid_highlight
+		ci.draw_circle(Vector2(walls.y + 0.4 if d.x > 0.0 else walls.x - 0.4, d.y), 0.9 if absf(d.x) > 1.5 else 0.7, color)
 
 	# The lime on the rim; the scoring marks stay on top of it.
 	for i in garnishes.size():

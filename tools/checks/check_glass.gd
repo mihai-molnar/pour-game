@@ -107,8 +107,15 @@ func _check_foam(glass: Glass, beer: DrinkDef) -> void:
 	expect(glass.foam_level() < glass.surface_level(glass.volume) - 5.0, "the head sits on top of the beer")
 	near(glass.surface_y_world_at(HOME.x) - HOME.y, glass.foam_level(), "the stream lands on the head", 1.5)
 	var poly := glass.foam_polygon()
-	expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "the head is drawable")
-	near(Pourer.poly_area(poly) / glass.foam.volume, 1.0, "the drawn head's area matches its volume", 0.06)
+	expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "the head, lumpy top and all, is drawable")
+	near(Pourer.poly_area(poly) / glass.foam.volume, 1.0, "the drawn head's area matches its volume", 0.08)
+	glass.tilt = deg_to_rad(30.0)
+	glass.step(DT)
+	poly = glass.foam_polygon()
+	expect(not Geometry2D.triangulate_polygon(poly).is_empty(), "a tipped head is drawable")
+	near(Pourer.poly_area(poly) / glass.foam.volume, 1.0, "...and as big as it is", 0.08)
+	glass.tilt = 0.0
+	glass.step(DT)
 	var before := glass.volume
 	var settled := glass.settled_volume()
 	_steps(glass, 4.0)
@@ -118,8 +125,15 @@ func _check_foam(glass: Glass, beer: DrinkDef) -> void:
 	expect(glass.spilled > 0.5 and glass.volume + glass.foam.volume <= glass.max_liquid() + 0.01, "an overflowing head is a spill")
 	glass.reset()
 	expect(glass.foam.volume == 0.0 and glass.volume == 0.0, "reset clears the head")
+	glass.volume = glass.target
+	seed(4)
+	_steps(glass, 2.0)
+	expect(glass._bubbles.size() >= 10, "standing beer fizzes (%d bubbles)" % glass._bubbles.size())
 	glass.setup(GameState.WATER)
 	expect(glass.foam == null, "water has no head")
+	glass.volume = glass.target
+	_steps(glass, 2.0)
+	eq(glass._bubbles.size(), 0, "standing water doesn't fizz")
 
 
 ## Beer's glass tips about its mouth while pouring: upright it is exactly as

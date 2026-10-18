@@ -25,6 +25,9 @@ enum BottleLook { WINE, BEER }
 @export var liquid_absorb := Vector3(0.010, 0.004, 0.002)
 ## How much liquid_color the liquid gives off by itself (so clear water still reads blue).
 @export_range(0.0, 1.0) var liquid_scatter := 0.35
+## Bubbles per second rising from the glass's floor while it holds the drink
+## (beer's fizz; 0 = none). Visual only.
+@export var fizz := 0.0
 
 @export_group("Glass")
 @export var glass_interior := PackedVector2Array()
