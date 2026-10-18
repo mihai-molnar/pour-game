@@ -1,10 +1,11 @@
 extends CheckBase
 ## Checks the camera framing: arriving vessels start off-screen, every vessel
-## fits the view at rest and at its common pouring tilts without passing behind
-## a HUD pill (a pourer's third glass, tipped further, may; a pourer may pass
-## the top edge by TOP_GRACE), the counter front shows below the lip with room
-## for the key row, the timer sits top right, the background covers the view,
-## and world points map onto the screen. Run:
+## fits the view at rest and at its common pouring tilts (a pourer may pass
+## the top edge by TOP_GRACE) — the glasses clear of the HUD pills, the
+## pourers clear of the coin pill (they may pass behind the timer, which sits
+## top centre over everything) — the counter front shows below the lip with
+## room for the key row, the background covers the view, and world points map
+## onto the screen. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=view
 
 ## Vessels stay this far inside the view (world px).
@@ -35,11 +36,12 @@ func run() -> void:
 	near(Main.CAMERA_ZOOM, 1.65, "the camera zooms out a little for the key row", 0.001)
 	var room := (view.end.y - Main.COUNTER_LIP_Y) * Main.CAMERA_ZOOM
 	expect(room >= Main.KEY_ROOM, "the view shows %.1f HUD units of counter front below the lip" % room)
-	eq(Hud.TIMER_PILL.end.x, 630.0, "the timer pill sits in the top-right corner")
+	near(Hud.TIMER_PILL.get_center().x, 320.0, "the timer pill sits top centre", 0.01)
 
 	var inner := view.grow(-MARGIN)
 	var pourer_room := Rect2(inner.position.x, view.position.y - TOP_GRACE, inner.size.x, inner.end.y - view.position.y + TOP_GRACE)
-	var pills := [_rect_poly(Rect2(Hud.PILL_AT, Vector2(COIN_PILL_W, Hud.PILL_H))), _rect_poly(Hud.TIMER_PILL)]
+	var coin_pill := [_rect_poly(Rect2(Hud.PILL_AT, Vector2(COIN_PILL_W, Hud.PILL_H)))]
+	var pills := coin_pill + [_rect_poly(Hud.TIMER_PILL)]
 	for d: DrinkDef in [GameState.WATER, GameState.WINE]:
 		var glass := Transform2D(0.0, Main.GLASS_POS) * d.glass_outer
 		expect(inner.encloses(_box(glass)) and not _behind_pill(main, glass, pills), "%s glass fits, clear of the HUD" % d.id)
@@ -49,10 +51,10 @@ func run() -> void:
 			var at := Transform2D(-deg_to_rad(d.pourer_rest_deg + tilt), lip)
 			var body := at * d.pourer_outer
 			expect(pourer_room.encloses(_box(body + at * d.pourer_handle)), "%s pourer at tilt %d fits the view" % [d.id, tilt])
-			var hidden := _behind_pill(main, body, pills)
+			var hidden := _behind_pill(main, body, coin_pill)
 			if d.pourer_handle.size() >= 2:
-				hidden = hidden or _behind_pill(main, at * d.pourer_handle, pills)
-			expect(not hidden, "%s pourer at tilt %d stays clear of the HUD pills" % [d.id, tilt])
+				hidden = hidden or _behind_pill(main, at * d.pourer_handle, coin_pill)
+			expect(not hidden, "%s pourer at tilt %d stays clear of the coin pill" % [d.id, tilt])
 			tilt += 2.0
 
 	var bg: Sprite2D = main.get_node("Background")

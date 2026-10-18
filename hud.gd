@@ -16,16 +16,17 @@ const BANNER_SIZE := 26
 const PILL_AT := Vector2(10, 8)
 const PILL_H := 22.0
 const PILL_PAD := 8.0
-## The timer, in the top-right corner (clear of the tipped pourers).
-const TIMER_PILL := Rect2(570, 8, 60, 22)
+## The timer, top centre over everything (a tipped pourer passes behind it).
+const TIMER_PILL := Rect2(290, 8, 60, 22)
 ## Gap between the coin count and the multiplier (a thin divider sits in it).
 const STREAK_GAP := 13.0
-## Where a grown multiplier pops up before flying to the coin counter, and how big.
-const STREAK_POP_AT := Vector2(320, 64)
+## Where a grown multiplier pops up before flying to the coin counter (below
+## the banner), and how big.
+const STREAK_POP_AT := Vector2(320, 92)
 const STREAK_POP_SCALE := 3.0
-## The ROUND / LAST CALL banner's top: in the pill row between the coin and
-## timer pills, clear of the garnish keys above the glass and the streak pop-up.
-const BANNER_Y := 8.0
+## The ROUND / LAST CALL banner's top: just under the timer, above the streak
+## pop-up and clear of the garnish keys above the glass.
+const BANNER_Y := 34.0
 ## How far a result popup floats up.
 const POPUP_RISE := 24.0
 ## Popup colour per scoring step; anything else (MISS, SPILL) is red.

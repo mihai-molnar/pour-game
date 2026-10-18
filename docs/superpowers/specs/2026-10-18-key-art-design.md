@@ -52,6 +52,14 @@ Settled with the user (2026-10-18):
   graze the top edge of the screen at its steepest pour. (Rejected: zooming
   out ~11 % with the HUD unchanged; zooming out a little and letting steep
   pours pass behind the timer.)
+  **Revised after the first look (2026-10-18):** "I am also loosing track of
+  the timer since moving it, let's have it back in the center on top of
+  everything, meaning that if the pitcher were to overlap, it should be
+  behind the timer" — the timer is back top centre (`Rect2(290, 8, 60, 22)`),
+  drawn over the bar as all the HUD is, so a tipped pourer passes behind it;
+  the zoom stays 1.65 (the key row and the wine bottle's top edge still need
+  it). The ROUND / LAST CALL banner sits just under the timer, and the streak
+  pop-up starts a little lower so the two never collide (builder's call).
 
 Played back to the user as guesses and accepted ("looks right, write it up"):
 
