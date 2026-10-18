@@ -1,7 +1,7 @@
 # Pour Game — Slice 3: The Shop, Garnishes and the Drink Menu
 
 Date: 2026-10-18
-Status: Approved (2026-10-18: "looks good")
+Status: Approved (2026-10-18: "looks good"); implemented 2026-10-18, awaiting playtest — plan `docs/superpowers/plans/2026-10-18-upgrade-shop.md`
 
 ## Overview
 
