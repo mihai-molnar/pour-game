@@ -16,14 +16,16 @@ const LINE := 0.8
 static var _titles := {}
 
 
-## Oswald at `weight` (variable, 200 to 700).
-static func title_font(weight := 700) -> FontVariation:
-	if not _titles.has(weight):
+## Oswald at `weight` (variable, 200 to 700), `spacing` extra units between letters.
+static func title_font(weight := 700, spacing := 0) -> FontVariation:
+	var key := weight * 100 + spacing
+	if not _titles.has(key):
 		var f := FontVariation.new()
 		f.base_font = OSWALD
 		f.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
-		_titles[weight] = f
-	return _titles[weight]
+		f.spacing_glyph = spacing
+		_titles[key] = f
+	return _titles[key]
 
 
 static func type_font(bold := false) -> Font:

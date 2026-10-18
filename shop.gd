@@ -1,11 +1,12 @@
 class_name Shop
 extends CanvasLayer
-## The shop between rounds, over the whole screen: a liquor-shop background,
-## the coin pill, three tabs and NEXT ROUND. UPGRADES sells the garnishes of
-## the drinks you own, DRINKS sells new drinks, MENU switches your drinks on
-## and off for the next round. Built in code and laid out by hand in the
-## 640x360 HUD space, like Hud. Space or clicking NEXT ROUND
-## emits next_pressed and hides it.
+## The shop between rounds, over the whole screen: a printed drinks menu on a
+## dark table, with coloured index tabs down its right edge. UPGRADES sells
+## the garnishes of your drinks, DRINKS sells new drinks, MENU switches your
+## drinks on and off for the next round; lines still to unlock are blacked
+## out. Each page is a MenuPage of MenuLines. Built in code and laid out by
+## hand in the 640x360 HUD space, like Hud. Space or clicking NEXT ROUND emits
+## next_pressed and hides it.
 
 signal next_pressed
 
@@ -13,34 +14,33 @@ enum Tab { UPGRADES, DRINKS, MENU }
 enum CardState { CAN_BUY, CANT_AFFORD, OWNED }
 
 const TAB_NAMES := ["UPGRADES", "DRINKS", "MENU"]
-const BACKGROUND := preload("res://art/shop_background.png")
+const TAB_COLORS := [Palette.TAB_UPGRADES, Palette.TAB_DRINKS, Palette.TAB_MENU]
 const SCREEN := Vector2(640, 360)
-const TAB_SIZE := Vector2(84, 22)
-const TAB_GAP := 6.0
-## Where the current tab's cards go (tools/background/shop.html darkens it).
-const PANEL := Rect2(40, 40, 560, 270)
-const CARD_GAP := 16.0
-## Panel-local y of the group headers and of the cards' tops.
-const HEADER_Y := 12.0
-const CARDS_Y := 40.0
+## Where the page lies; the tabs stick out of its right edge.
+const PAGE_AT := Vector2(22, 8)
+const TAB_SIZE := Vector2(30, 74)
+const TAB_TOP := 44.0
+const TAB_GAP := 8.0
+## Blacked-out lines (things to unlock later): per drink on UPGRADES, and on DRINKS.
+const UPGRADE_TEASERS := {&"water": 2, &"wine": 3}
+const DRINK_TEASERS := 5
 
 ## The tab on show; it stays the same between visits.
 var tab := Tab.UPGRADES
-## Seconds after open() during which Space and the button are ignored, so a
+## Seconds after open() during which Space and NEXT ROUND are ignored, so a
 ## stray press from the last serve doesn't skip the shop.
 var input_lock := 0.5
+## The page on show and its parts.
+var page: MenuPage
+var lines: Array[MenuLine] = []
 var coins_label: Label
-## The round just played, under the title ("" before any round).
 var round_line_label: Label
 var next_button: Button
-## The current tab's cards, in order.
-var cards: Array[ShopCard] = []
 
 var _root: Control
-var _coin_pill: Panel
+var _paper: Control
 var _tabs: Array[Button] = []
-var _content: Control
-var _page: Control
+var _round_text := ""
 var _opened_at_msec := 0
 
 
@@ -48,97 +48,34 @@ func _ready() -> void:
 	layer = 2
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var theme := Theme.new()
-	theme.default_font = Hud.font()
-	theme.default_font_size = Hud.SIZE
-	_root.theme = theme
 	add_child(_root)
-	var bg := TextureRect.new()
-	bg.texture = BACKGROUND
-	bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
-	bg.size = SCREEN
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(bg)
-
-	_coin_pill = Panel.new()
-	_coin_pill.position = Hud.PILL_AT
-	_coin_pill.size = Vector2(60, Hud.PILL_H)
-	_coin_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_coin_pill.add_theme_stylebox_override("panel", Hud.pill_style())
-	_root.add_child(_coin_pill)
-	var coin := Hud.Coin.new()
-	coin.position = Hud.PILL_AT + Vector2(Hud.PILL_PAD - 1.0, (Hud.PILL_H - 12.0) * 0.5)
-	coin.size = Vector2(12, 12)
-	_root.add_child(coin)
-	coins_label = Label.new()
-	coins_label.position = Vector2(Hud.PILL_AT.x + Hud.PILL_PAD + 15.0, Hud.PILL_AT.y)
-	coins_label.size.y = Hud.PILL_H
-	coins_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	coins_label.add_theme_color_override("font_color", Palette.WHITE)
-	_root.add_child(coins_label)
-
-	var row_w := TAB_SIZE.x * TAB_NAMES.size() + TAB_GAP * (TAB_NAMES.size() - 1)
+	var table := ColorRect.new()
+	table.color = Palette.INK
+	table.size = SCREEN
+	table.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(table)
+	_paper = Control.new()
+	_paper.position = PAGE_AT
+	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_paper)
 	for i in TAB_NAMES.size():
 		var b := Button.new()
-		b.text = TAB_NAMES[i]
-		b.position = Vector2((SCREEN.x - row_w) * 0.5 + i * (TAB_SIZE.x + TAB_GAP), Hud.PILL_AT.y)
-		b.size = TAB_SIZE
+		b.flat = true
 		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_override("font", Hud.font(700))
-		b.add_theme_font_size_override("font_size", 11)
+		b.size = TAB_SIZE
+		b.position = Vector2(PAGE_AT.x + MenuPage.SIZE.x - 3.0, PAGE_AT.y + TAB_TOP + i * (TAB_SIZE.y + TAB_GAP))
+		for state in ["normal", "hover", "pressed", "focus"]:
+			b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+		var shape := DrawLayer.new()
+		shape.draw_func = _draw_tab.bind(i, b)
+		b.add_child(shape)
+		b.mouse_entered.connect(shape.queue_redraw)
+		b.mouse_exited.connect(shape.queue_redraw)
 		b.pressed.connect(show_tab.bind(i))
 		_root.add_child(b)
 		_tabs.append(b)
-
-	var panel := Panel.new()
-	panel.position = PANEL.position
-	panel.size = PANEL.size
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := Hud.pill_style(14)
-	style.bg_color = Color(Palette.INK, 0.72)
-	panel.add_theme_stylebox_override("panel", style)
-	_root.add_child(panel)
-	_content = Control.new()
-	_content.position = PANEL.position
-	_content.size = PANEL.size
-	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(_content)
-
-	round_line_label = Label.new()
-	round_line_label.position = Vector2(PANEL.position.x, PANEL.position.y - 10.0)
-	round_line_label.size = Vector2(PANEL.size.x, 10)
-	round_line_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	round_line_label.add_theme_font_size_override("font_size", 9)
-	round_line_label.add_theme_color_override("font_color", Palette.FROST)
-	_root.add_child(round_line_label)
-
-	next_button = Button.new()
-	next_button.text = "NEXT ROUND · SPACE"
-	next_button.focus_mode = Control.FOCUS_NONE
-	gold_button(next_button, 12)
-	next_button.size = Vector2(160, 26)
-	next_button.position = SCREEN - Vector2(Hud.PILL_AT.x, Hud.PILL_AT.y) - next_button.size
-	next_button.pressed.connect(_next)
-	_root.add_child(next_button)
+	refresh()
 	visible = false
-
-
-## Styles `b` as a gold action pill (dimmed when disabled).
-static func gold_button(b: Button, radius: int) -> void:
-	b.add_theme_font_override("font", Hud.font(700))
-	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
-		b.add_theme_color_override(c, Palette.INK)
-	b.add_theme_color_override("font_disabled_color", Color(Palette.INK, 0.6))
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var s := Hud.pill_style(radius)
-		s.border_width_top = 0
-		match state:
-			"hover": s.bg_color = Palette.GOLD.lightened(0.15)
-			"disabled": s.bg_color = Color(Palette.STEEL, 0.6)
-			_: s.bg_color = Palette.GOLD
-		b.add_theme_stylebox_override(state, s)
 
 
 ## "ROUND 2 · 6 GLASSES · 4 PERFECT · BEST x1.6 · +134" — `stats` keys:
@@ -150,8 +87,7 @@ static func round_line(round_number: int, stats: Dictionary) -> String:
 
 ## Opens the shop; `round_text` is the round line ("" hides it).
 func open(round_text := "") -> void:
-	round_line_label.text = round_text
-	round_line_label.visible = round_text != ""
+	_round_text = round_text
 	refresh()
 	_opened_at_msec = Time.get_ticks_msec()
 	visible = true
@@ -184,9 +120,9 @@ func buy(item: Resource) -> bool:
 	var bought := GameState.buy_garnish(item) if item is GarnishDef else GameState.buy_drink(item)
 	refresh()
 	if bought:
-		for c in cards:
-			if c.item == item:
-				c.pop()
+		for line in lines:
+			if line.item == item:
+				line.stamp()
 	return bought
 
 
@@ -198,134 +134,116 @@ func toggle(d: DrinkDef) -> bool:
 	return ok
 
 
-## Brings everything up to date with GameState: the coins, the tabs, the
-## current tab's cards.
+func blacked_out_lines() -> int:
+	return page.blacked_out
+
+
+## Brings everything up to date with GameState: a fresh page for the current
+## tab, and the tabs.
 func refresh() -> void:
-	coins_label.text = str(GameState.coins)
-	_coin_pill.size.x = coins_label.position.x - Hud.PILL_AT.x + Hud.text_width(coins_label.text, Hud.SIZE) + Hud.PILL_PAD
-	for i in _tabs.size():
-		_style_tab(_tabs[i], i == tab)
-	if _page != null:
-		_page.visible = false
-		_page.queue_free()  # not free(): this may run inside one of its buttons' signals
-	_page = Control.new()
-	_page.size = PANEL.size
-	_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_content.add_child(_page)
-	cards.clear()
-	var groups: Array = []  # [header, [cards]]
-	match tab:
+	var old := page
+	page = _build_page(tab)
+	_paper.add_child(page)
+	if old != null:
+		old.visible = false
+		old.queue_free()  # not free(): this may run inside one of its buttons' signals
+	lines = page.lines
+	coins_label = page.coins_label
+	round_line_label = page.round_line_label
+	next_button = page.next_button
+	_arrange_tabs()
+
+
+func _build_page(t: Tab) -> MenuPage:
+	var sections: Array = []
+	match t:
 		Tab.UPGRADES:
-			for d in GameState.owned_drinks:
-				var group: Array[ShopCard] = []
+			for d: DrinkDef in GameState.DRINKS:
+				var rows: Array = []
 				for g in d.garnishes:
-					var lines := "%s\n%s to add" % [g.description, OS.get_keycode_string(g.key).to_upper()]
-					var card := _card(g, g.display_name, lines, _garnish_picture(g))
-					card.show_price(g.price, state_of(g))
-					group.append(card)
-				if not group.is_empty():
-					groups.append([d.display_name.to_upper(), group])
+					var line := _line(g, g.display_name, "%s · %s to add" % [g.description, OS.get_keycode_string(g.key).to_upper()], _garnish_picture(g))
+					line.show_price(g.price, state_of(g))
+					rows.append(line)
+				for i in UPGRADE_TEASERS.get(d.id, 0):
+					rows.append(null)
+				if not rows.is_empty():
+					sections.append({"header": d.display_name.to_upper(), "rows": rows})
 		Tab.DRINKS:
-			var group: Array[ShopCard] = []
+			var rows: Array = []
 			for d: DrinkDef in GameState.DRINKS:
 				if d.price > 0:
-					var lines := "Pays %d / %d / %d" % [d.perfect_coins, d.good_coins, d.ok_coins]
-					var card := _card(d, d.display_name, lines, _vessel_picture(d, VesselPreview.Kind.POURER, 1.0))
-					card.show_price(d.price, state_of(d))
-					group.append(card)
-			groups.append(["NEW DRINKS", group])
+					var line := _line(d, d.display_name, "Pays %d / %d / %d" % [d.perfect_coins, d.good_coins, d.ok_coins],
+						func(ci: CanvasItem) -> void: MenuArt.draw_bottle(ci, d, Rect2(-7, -13, 14, 26)))
+					line.show_price(d.price, state_of(d))
+					rows.append(line)
+			sections.append({"header": "BY THE GLASS", "rows": rows})
+			var teasers: Array = []
+			teasers.resize(DRINK_TEASERS)
+			sections.append({"header": "", "rows": teasers})
 		Tab.MENU:
-			var group: Array[ShopCard] = []
+			var rows: Array = []
 			for d in GameState.owned_drinks:
-				var card := _card(d, d.display_name, "", _vessel_picture(d, VesselPreview.Kind.GLASS, d.fill_fraction))
+				var line := _line(d, d.display_name, "Pays %d / %d / %d" % [d.perfect_coins, d.good_coins, d.ok_coins],
+					func(ci: CanvasItem) -> void: MenuArt.draw_glass(ci, d, MenuLine.PICTURE, d.fill_fraction))
 				var on := GameState.menu.has(d)
-				card.show_toggle(on, on and GameState.menu.size() == 1)
-				group.append(card)
-			groups.append(["NEXT ROUND SERVES", group])
-	_lay_out(groups)
+				line.show_toggle(on, on and GameState.menu.size() == 1)
+				rows.append(line)
+			sections.append({"header": "NEXT ROUND SERVES", "rows": rows})
+	var p := MenuPage.new(TAB_NAMES[t], sections, _round_text, GameState.coins)
+	p.next_button.pressed.connect(_next)
+	return p
 
 
-func _card(item: Resource, title: String, lines: String, picture: Array) -> ShopCard:
-	var card := ShopCard.new(item, title, lines, picture[0], picture[1])
-	card.activated.connect(_on_card.bind(item))
-	cards.append(card)
-	return card
+func _line(item: Resource, title: String, description: String, picture: Callable) -> MenuLine:
+	var line := MenuLine.new(item, title, description, picture)
+	line.activated.connect(_on_line.bind(item))
+	return line
 
 
-func _on_card(item: Resource) -> void:
+func _on_line(item: Resource) -> void:
 	if tab == Tab.MENU:
 		toggle(item)
 	else:
 		buy(item)
 
 
-## Puts the groups' cards in one centred row, each group's header above it.
-func _lay_out(groups: Array) -> void:
-	var total := 0
-	for g in groups:
-		total += g[1].size()
-	var x := (PANEL.size.x - (total * ShopCard.SIZE.x + maxi(total - 1, 0) * CARD_GAP)) * 0.5
-	for g in groups:
-		var group: Array[ShopCard] = g[1]
-		if group.is_empty():
-			continue
-		var start := x
-		for card in group:
-			card.position = Vector2(x, CARDS_Y)
-			_page.add_child(card)
-			x += ShopCard.SIZE.x + CARD_GAP
-		var header := Label.new()
-		header.text = g[0]
-		header.position = Vector2(start, HEADER_Y)
-		header.size = Vector2(x - CARD_GAP - start, 20)
-		header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		header.add_theme_font_override("font", Hud.font(700))
-		header.add_theme_font_size_override("font_size", 12)
-		header.add_theme_color_override("font_color", Palette.GOLD)
-		_page.add_child(header)
-
-
-## [picture node, its box]: the garnish drawn as in the game.
-func _garnish_picture(g: GarnishDef) -> Array:
-	var layer := DrawLayer.new()
-	var polys: Array[PackedVector2Array] = []
+func _garnish_picture(g: GarnishDef) -> Callable:
 	if g.kind == GarnishDef.Kind.ICE:
-		var poses := [Vector3(-5.0, 3.0, -0.15), Vector3(5.2, 3.4, 0.12), Vector3(0.3, -5.6, 0.05)]
-		layer.draw_func = func(ci: CanvasItem) -> void:
-			for p: Vector3 in poses:
-				GarnishArt.draw_ice_body(ci, Vector2(p.x, p.y), g.cube_size, p.z)
-				GarnishArt.draw_ice_edges(ci, Vector2(p.x, p.y), g.cube_size, p.z)
-		for p: Vector3 in poses:
-			polys.append(GarnishArt.ice_outline(Vector2(p.x, p.y), g.cube_size, p.z))
-	else:
-		layer.draw_func = func(ci: CanvasItem) -> void:
-			GarnishArt.draw_lime(ci, Vector2.ZERO, Glass.LIME_RADIUS, Glass.LIME_ANGLE)
-		polys = GarnishArt.lime_polygons(Vector2.ZERO, Glass.LIME_RADIUS, Glass.LIME_ANGLE)
-	var box := Rect2(polys[0][0], Vector2.ZERO)
-	for poly in polys:
-		for p in poly:
-			box = box.expand(p)
-	return [layer, box.grow(box.size.x * 0.35)]
+		return func(ci: CanvasItem) -> void: MenuArt.draw_ice(ci, Vector2.ZERO, 18.0)
+	return func(ci: CanvasItem) -> void: MenuArt.draw_lime(ci, Vector2.ZERO, 10.0)
 
 
-## [picture node, its box]: the drink's glass or pourer as in the game.
-func _vessel_picture(d: DrinkDef, kind: VesselPreview.Kind, fill: float) -> Array:
-	return [VesselPreview.new(d, kind, fill), VesselPreview.bounds(d, kind).grow(4.0)]
+## The current page's tab sits in front of the page, joined to it; the others
+## behind it.
+func _arrange_tabs() -> void:
+	for i in _tabs.size():
+		var b := _tabs[i]
+		if i == tab:
+			_root.move_child(b, _paper.get_index() + 1)
+		else:
+			_root.move_child(b, _paper.get_index())
+		b.get_child(0).queue_redraw()
 
 
-func _style_tab(b: Button, active: bool) -> void:
-	var text := Palette.INK if active else Palette.FROST
-	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
-		b.add_theme_color_override(c, text)
-	for state in ["normal", "hover", "pressed"]:
-		var s := Hud.pill_style()
-		if active:
-			s.bg_color = Palette.GOLD
-			s.border_width_top = 0
-		elif state == "hover":
-			s.bg_color = Color(Palette.SLATE, 0.85)
-		b.add_theme_stylebox_override(state, s)
+## An index tab: a raised shape with sloped, rounded shoulders in its colour,
+## its name running down it.
+func _draw_tab(ci: CanvasItem, i: int, b: Button) -> void:
+	var w := TAB_SIZE.x
+	var h := TAB_SIZE.y
+	var shape := VesselArt.rounded(PackedVector2Array([Vector2(0, 0), Vector2(w - 6, 6), Vector2(w, 14), Vector2(w, h - 14), Vector2(w - 6, h - 6), Vector2(0, h)]), 4.0)
+	var color: Color = TAB_COLORS[i]
+	if i != tab:
+		color = color.darkened(0.18)
+	if b.is_hovered():
+		color = color.lightened(0.12)
+	ci.draw_colored_polygon(shape, color)
+	ci.draw_polyline(shape, Color(Palette.INK, 0.35), 0.6, true)
+	var font := MenuArt.title_font(700, 2)
+	var text: String = TAB_NAMES[i]
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+	ci.draw_set_transform(Vector2(w * 0.5 + 0.5, h * 0.5), PI * 0.5)
+	ci.draw_string(font, Vector2(-tw * 0.5, 3.5), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Palette.PAPER)
+	ci.draw_set_transform(Vector2.ZERO)
 
 
 func _locked() -> bool:
