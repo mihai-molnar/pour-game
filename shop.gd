@@ -4,7 +4,7 @@ extends CanvasLayer
 ## the coin pill, three tabs and NEXT ROUND. UPGRADES sells the garnishes of
 ## the drinks you own, DRINKS sells new drinks, MENU switches your drinks on
 ## and off for the next round. Built in code and laid out by hand in the
-## 640x360 HUD space, like Hud and RoundSummary. Space or clicking NEXT ROUND
+## 640x360 HUD space, like Hud. Space or clicking NEXT ROUND
 ## emits next_pressed and hides it.
 
 signal next_pressed
@@ -27,9 +27,11 @@ const CARDS_Y := 40.0
 ## The tab on show; it stays the same between visits.
 var tab := Tab.UPGRADES
 ## Seconds after open() during which Space and the button are ignored, so a
-## stray press from the summary doesn't skip the shop.
+## stray press from the last serve doesn't skip the shop.
 var input_lock := 0.5
 var coins_label: Label
+## The round just played, under the title ("" before any round).
+var round_line_label: Label
 var next_button: Button
 ## The current tab's cards, in order.
 var cards: Array[ShopCard] = []
@@ -104,8 +106,16 @@ func _ready() -> void:
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_content)
 
+	round_line_label = Label.new()
+	round_line_label.position = Vector2(PANEL.position.x, PANEL.position.y - 10.0)
+	round_line_label.size = Vector2(PANEL.size.x, 10)
+	round_line_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_line_label.add_theme_font_size_override("font_size", 9)
+	round_line_label.add_theme_color_override("font_color", Palette.FROST)
+	_root.add_child(round_line_label)
+
 	next_button = Button.new()
-	next_button.text = "NEXT ROUND  (SPACE)"
+	next_button.text = "NEXT ROUND · SPACE"
 	next_button.focus_mode = Control.FOCUS_NONE
 	gold_button(next_button, 12)
 	next_button.size = Vector2(160, 26)
@@ -115,7 +125,7 @@ func _ready() -> void:
 	visible = false
 
 
-## Styles `b` as a gold action pill (dimmed when disabled), like the summary's button.
+## Styles `b` as a gold action pill (dimmed when disabled).
 static func gold_button(b: Button, radius: int) -> void:
 	b.add_theme_font_override("font", Hud.font(700))
 	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
@@ -131,7 +141,17 @@ static func gold_button(b: Button, radius: int) -> void:
 		b.add_theme_stylebox_override(state, s)
 
 
-func open() -> void:
+## "ROUND 2 · 6 GLASSES · 4 PERFECT · BEST x1.6 · +134" — `stats` keys:
+## served, perfects, best_mult, coins.
+static func round_line(round_number: int, stats: Dictionary) -> String:
+	return "ROUND %d · %d %s · %d PERFECT · BEST %s · %+d" % [round_number, stats.served,
+		"GLASS" if stats.served == 1 else "GLASSES", stats.perfects, Hud.format_mult(stats.best_mult), stats.coins]
+
+
+## Opens the shop; `round_text` is the round line ("" hides it).
+func open(round_text := "") -> void:
+	round_line_label.text = round_text
+	round_line_label.visible = round_text != ""
 	refresh()
 	_opened_at_msec = Time.get_ticks_msec()
 	visible = true

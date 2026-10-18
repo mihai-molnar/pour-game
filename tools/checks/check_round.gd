@@ -25,7 +25,7 @@ func run() -> void:
 	_spill_costs_coins_but_never_below_zero()
 	_space_ignored_during_swap_and_refill()
 	_next_round_resets_and_reads_stats()
-	_summary_leads_to_the_shop()
+	_round_end_opens_the_shop()
 	_round_two_is_water_only()
 	_bought_wine_opens_the_next_round()
 	_picks_follow_the_seed()
@@ -100,7 +100,7 @@ func _full_round_with_autopilot() -> void:
 	var refill_done := false
 	var refill_rest_ticks := 0
 	var t := 0.0
-	while main.phase != Main.Phase.SUMMARY and t < 60.0:
+	while main.phase != Main.Phase.SHOP and t < 60.0:
 		var d := pilot.decide(main)
 		if d.serve:
 			main.request_serve()
@@ -114,7 +114,7 @@ func _full_round_with_autopilot() -> void:
 		if served_at_time_up < 0 and main.time_left <= 0.0:
 			served_at_time_up = main.results.size()
 		t += DT
-	expect(main.phase == Main.Phase.SUMMARY, "the round reaches SUMMARY")
+	expect(main.phase == Main.Phase.SHOP, "the round reaches SUMMARY")
 	expect(main.results.size() >= 4, "the autopilot serves at least 4 glasses (served %d)" % main.results.size())
 	expect(main.results.size() - served_at_time_up <= 1, "at most one glass is served after 0:00")
 	var total := 0
@@ -128,7 +128,7 @@ func _full_round_with_autopilot() -> void:
 	expect(main.round_stats.served == main.results.size(), "served count matches the results")
 	expect(saw_refill, "the pitcher ran dry and refilled during the round")
 	expect(absf(refill_rest_ticks * DT - 1.0) < 0.1, "the refill lasts refill_time once upright (%.2f s)" % (refill_rest_ticks * DT))
-	expect(main.summary.visible, "the summary is shown")
+	expect(main.shop.visible, "the shop is shown")
 
 
 func _last_call_auto_serve() -> void:
@@ -149,10 +149,9 @@ func _last_call_auto_serve() -> void:
 	expect(main.results.size() == 1, "the last-call glass is served automatically")
 	var idle_for := served_at - idle_from
 	expect(idle_from >= 0.0 and idle_for >= 3.0 and idle_for < 3.1, "auto-serve comes 3.0-3.1 s after the idle starts (%.3f s)" % idle_for)
-	expect(main.phase == Main.Phase.SUMMARY, "the round ends after the last-call serve")
-	expect(t - served_at >= Main.SUMMARY_DELAY - DT, "the summary waits SUMMARY_DELAY after the last serve (%.2f s)" % (t - served_at))
+	expect(main.phase == Main.Phase.SHOP, "the round ends after the last-call serve")
+	expect(t - served_at >= Main.SHOP_DELAY - DT, "the shop waits SHOP_DELAY after the last serve (%.2f s)" % (t - served_at))
 	expect(not main.glass.visible, "the last glass vanishes and no new glass arrives")
-	main.open_shop()
 	main.next_round()
 	expect(main.glass.visible and main.glass.is_arriving(), "the next round's first glass is visible and arriving")
 
@@ -186,7 +185,7 @@ func _last_call_waits_for_a_refill() -> void:
 	expect(main.pourer.refilling and main.results.size() == served, "the idle auto-serve waits while the pitcher refills")
 	_run(6.0)
 	expect(main.results.size() == served + 1, "...then serves 3 s after the refill")
-	expect(main.phase == Main.Phase.SUMMARY, "...and the round ends")
+	expect(main.phase == Main.Phase.SHOP, "...and the round ends")
 	GameState.stats = GameState.BASE_STATS.duplicate()
 
 
@@ -204,7 +203,7 @@ func _time_up_during_a_bottle_refill() -> void:
 	expect(main.phase == Main.Phase.LAST_CALL, "0:00 while the new bottle arrives still gives the glass its last call (phase %s)" % Main.Phase.keys()[main.phase])
 	_run(6.0)
 	expect(main.results.size() == 1, "the part-filled glass is scored")
-	expect(main.phase == Main.Phase.SUMMARY, "...and the round ends")
+	expect(main.phase == Main.Phase.SHOP, "...and the round ends")
 
 
 func _last_call_tiny_pour_still_ends() -> void:
@@ -215,7 +214,7 @@ func _last_call_tiny_pour_still_ends() -> void:
 	_run(0.1)
 	expect(main.phase == Main.Phase.LAST_CALL, "liquid in the air at 0:00 counts as an active glass")
 	_run(6.0)
-	expect(main.phase == Main.Phase.SUMMARY, "a last call that never reaches 1 % still ends the round")
+	expect(main.phase == Main.Phase.SHOP, "a last call that never reaches 1 % still ends the round")
 	expect(main.results.is_empty(), "the under-1 % glass isn't scored")
 
 
@@ -223,7 +222,7 @@ func _time_up_untouched_glass() -> void:
 	_to_playing()
 	main.time_left = 0.5
 	_run(0.6)
-	expect(main.phase == Main.Phase.SUMMARY, "0:00 with an untouched glass goes straight to SUMMARY")
+	expect(main.phase == Main.Phase.SHOP, "0:00 with an untouched glass goes straight to SUMMARY")
 	expect(main.results.is_empty(), "nothing is scored")
 
 
@@ -232,7 +231,7 @@ func _time_up_mid_swap() -> void:
 	_pour_until_swap()
 	main.time_left = DT * 0.5
 	main.tick(DT, false)
-	expect(main.phase == Main.Phase.SUMMARY, "0:00 while the next glass arrives ends the round immediately")
+	expect(main.phase == Main.Phase.SHOP, "0:00 while the next glass arrives ends the round immediately")
 	expect(main.results.size() == 1, "only the served glass is scored")
 
 
@@ -294,16 +293,16 @@ func _next_round_resets_and_reads_stats() -> void:
 	main.streak = 3
 	main.time_left = 0.01
 	_run(0.1, true)  # holding DOWN through the end of the round
-	expect(main.phase == Main.Phase.SUMMARY, "the round ended")
+	expect(main.phase == Main.Phase.SHOP, "the round ended")
+	var jug: float = main.pourer.volume
 	_run(1.5, true)
-	expect(main.pourer.tilt < 0.001, "DOWN is ignored on the summary (pitcher upright)")
+	expect(main.stream.is_empty() and main.pourer.volume == jug, "DOWN does nothing in the shop")
 	GameState.stats.round_duration = 10.0
 	# Leave the pourer tilted, dry and refilling so only start_round can reset it.
 	main.pourer.tilt = 0.6
 	main.pourer.volume = main.pourer.full_volume * 0.001
 	main.pourer.refilling = true
 	var round_before: int = GameState.round_number
-	main.open_shop()
 	main.next_round()
 	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "next_round starts the next INTRO")
 	expect(main.streak == 0, "streak resets")
@@ -312,32 +311,27 @@ func _next_round_resets_and_reads_stats() -> void:
 	expect(is_equal_approx(main.pourer.volume, main.pourer.full_volume), "the pourer starts full")
 	expect(main.pourer.tilt == 0.0 and not main.pourer.refilling, "the pourer starts upright and not refilling")
 	expect(main.glass.def == main.drink and main.pourer.def == main.drink, "glass and pourer match the round's first drink")
-	expect(not main.summary.visible, "the summary is hidden")
+	expect(not main.shop.visible, "the shop is hidden")
 	GameState.stats = GameState.BASE_STATS.duplicate()
 
 
-func _summary_leads_to_the_shop() -> void:
+func _round_end_opens_the_shop() -> void:
 	_to_playing()
 	main.time_left = 0.01
 	_run(0.1)
-	expect(main.phase == Main.Phase.SUMMARY, "the round ended")
-	main.next_round()
-	expect(main.phase == Main.Phase.SUMMARY, "next_round does nothing from the summary")
-	main.summary.input_lock = 0.0
-	main.summary._next()
-	expect(main.phase == Main.Phase.SHOP and main.shop.visible and not main.summary.visible, "the summary's button opens the shop")
+	expect(main.phase == Main.Phase.SHOP and main.shop.visible, "time up on an untouched glass opens the shop at once")
 	expect(not main.visible and not main.hud.visible, "the bar and the HUD are hidden in the shop")
-	var round_before: int = GameState.round_number
-	_run(1.0, true)
-	expect(main.phase == Main.Phase.SHOP and main.pourer.tilt == 0.0, "nothing ticks in the shop")
-	main.shop.input_lock = 0.0
+	eq(main.shop.round_line_label.text, "ROUND 1 · 0 GLASSES · 0 PERFECT · BEST x1 · +0", "the shop shows the round's numbers")
 	var space := InputEventKey.new()
 	space.physical_keycode = KEY_SPACE
 	space.pressed = true
+	var round_before: int = GameState.round_number
+	main.shop._unhandled_input(space)
+	expect(main.phase == Main.Phase.SHOP, "a Space carried over from the last serve is swallowed by the lock")
+	main.shop.input_lock = 0.0
 	main.shop._unhandled_input(space)
 	expect(main.phase == Main.Phase.INTRO and GameState.round_number == round_before + 1, "Space in the shop starts the next round")
 	expect(main.visible and main.hud.visible and not main.shop.visible, "...and brings the bar back")
-	main.summary.input_lock = 0.5
 	main.shop.input_lock = 0.5
 
 
@@ -428,7 +422,7 @@ func _mixed_round_with_autopilot() -> void:
 	_fresh_with_wine(11)  # a seed that serves both drinks this round
 	var pilot := Autopilot.new()
 	var t := 0.0
-	while main.phase != Main.Phase.SUMMARY and t < 60.0:
+	while main.phase != Main.Phase.SHOP and t < 60.0:
 		var d := pilot.decide(main)
 		if d.serve:
 			main.request_serve()
@@ -437,7 +431,7 @@ func _mixed_round_with_autopilot() -> void:
 	var count := {}
 	for r in main.results:
 		count[r.drink] = count.get(r.drink, 0) + 1
-	expect(main.phase == Main.Phase.SUMMARY, "the mixed round reaches SUMMARY")
+	expect(main.phase == Main.Phase.SHOP, "the mixed round reaches SUMMARY")
 	expect(main.results.size() >= 4, "the autopilot serves at least 4 glasses in a mixed round (%d)" % main.results.size())
 	expect(count.has(&"wine") and count.has(&"water"), "round 2 serves both drinks (%s)" % count)
 	var good := 0
@@ -485,8 +479,7 @@ func _garnish_keys_follow_the_rules() -> void:
 	eq(main.hint_text(), "HOLD DOWN  pour   ·   SPACE  serve   ·   F1  debug", "plain hint on wine")
 	main.time_left = 0.01
 	_run(6.0)
-	expect(main.phase == Main.Phase.SUMMARY and not main.try_garnish(KEY_UP), "nothing on the summary")
-	main.open_shop()
+	expect(main.phase == Main.Phase.SHOP, "the round ended")
 	expect(not main.try_garnish(KEY_UP) and not main.try_garnish(KEY_LEFT), "nothing in the shop")
 	main.next_round()
 	_run(Main.INTRO_TIME + DT)
@@ -530,7 +523,7 @@ func _iced_round_with_autopilot() -> void:
 	main.start_round()
 	var pilot := Autopilot.new()
 	var t := 0.0
-	while main.phase != Main.Phase.SUMMARY and t < 60.0:
+	while main.phase != Main.Phase.SHOP and t < 60.0:
 		var d := pilot.decide(main)
 		for k in d.keys:
 			main.try_garnish(k)

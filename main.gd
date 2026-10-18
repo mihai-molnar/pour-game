@@ -1,8 +1,9 @@
 class_name Main
 extends Node2D
-## The round loop: INTRO → PLAYING → LAST_CALL → SUMMARY → SHOP, each glass a
-## random drink from the menu (see docs/superpowers/specs/2026-10-15-round-loop-design.md,
-## 2026-10-15-second-drink-design.md and 2026-10-18-upgrade-shop-design.md). Glasses and pourers arrive by
+## The round loop: INTRO → PLAYING → LAST_CALL → SHOP, each glass a random
+## drink from the menu (see docs/superpowers/specs/2026-10-15-round-loop-design.md,
+## 2026-10-15-second-drink-design.md, 2026-10-18-upgrade-shop-design.md and
+## 2026-10-18-menu-shop-and-ice-physics-design.md). Glasses and pourers arrive by
 ## sliding in. All round logic advances only in tick(dt, hold), so check
 ## scripts can fast-forward it headless (`manual = true`); tweens are used for
 ## HUD visuals only.
@@ -16,7 +17,7 @@ extends Node2D
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
 ##   --quit=S             quit after S seconds
 
-enum Phase { INTRO, PLAYING, LAST_CALL, SUMMARY, SHOP }
+enum Phase { INTRO, PLAYING, LAST_CALL, SHOP }
 
 const GLASS_POS := Vector2(256, 280)
 ## The static camera: the world point at the screen centre, and how much closer
@@ -28,14 +29,13 @@ const SCREEN_SIZE := Vector2(640, 360)
 ## per world px; tools/background/bar.html draws it with the same numbers).
 const BACKGROUND_RECT := Rect2(110, 76, 380, 220)
 const INTRO_TIME := 1.5
-## The last-call glass vanishes this long before the summary appears, so its popup reads.
-const SUMMARY_DELAY := 0.35
+## The last-call glass vanishes this long before the shop opens, so its popup reads.
+const SHOP_DELAY := 0.35
 const LAST_CALL_IDLE := 3.0
 ## A glass counts as touched once it holds this share of its capacity; less can't be served.
 const ACTIVE_SHARE := 0.01
 ## Result popups float this far above the glass's rim (world px).
 const POPUP_ABOVE_RIM := 14.0
-const AUTOPLAY_SUMMARY_WAIT := 1.5
 const AUTOPLAY_SHOP_WAIT := 1.5
 const HINT_SEP := "   ·   "
 
@@ -44,7 +44,6 @@ const HINT_SEP := "   ·   "
 @onready var stream: Stream = $Stream
 @onready var effects: Effects = $Effects
 @onready var hud: Hud = $Hud
-@onready var summary: RoundSummary = $RoundSummary
 @onready var shop: Shop = $Shop
 @onready var camera: Camera2D = $Camera
 @onready var shadows: Shadows = $Shadows
@@ -65,7 +64,7 @@ var round_stats := {}
 var results: Array[Dictionary] = []
 
 var _serve_queued := false
-var _summary_in := -1.0  # >= 0 while the last-call glass's puff plays before the summary
+var _shop_in := -1.0  # >= 0 while the last-call glass's puff plays before the shop opens
 var _force_next: DrinkDef  # the next glass's drink when it isn't random (a just-bought drink)
 var _idle := 0.0
 var _autopilot: Autopilot
@@ -82,7 +81,6 @@ func _ready() -> void:
 	shadows.pourer = pourer
 	reflection.glass = glass
 	reflection.pourer = pourer
-	summary.next_pressed.connect(open_shop)
 	shop.next_pressed.connect(next_round)
 	glass.landed.connect(_on_landed)
 	glass.garnish_landed.connect(_on_garnish_landed)
@@ -106,7 +104,6 @@ func _ready() -> void:
 		_quit_at = float(args["quit"])
 	if args.has("shop"):
 		GameState.round_number = 0  # the round after this shop is round 1
-		_enter(Phase.SUMMARY)
 		open_shop()
 	else:
 		start_round()
@@ -128,7 +125,7 @@ func start_round() -> void:
 	round_stats = {"served": 0, "perfects": 0, "best_mult": 1.0, "coins": 0}
 	results.clear()
 	_serve_queued = false
-	_summary_in = -1.0
+	_shop_in = -1.0
 	_idle = 0.0
 	stream.clear()
 	var fresh := GameState.take_new_drink()
@@ -137,20 +134,18 @@ func start_round() -> void:
 	stream.set_drink(drink)
 	glass.arrive(drink, GLASS_POS)
 	pourer.arrive(drink, GLASS_POS + drink.pourer_offset)
-	summary.hide_results()
 	hud.show_banner(Hud.round_banner(GameState.round_number, fresh), INTRO_TIME)
 	hud.set_streak(1.0, false)  # a new round's x1 isn't a broken streak
 	_refresh_hud()
 
 
-## From the summary to the shop: the bar and the HUD hide while it is open.
+## The round is over: the shop opens with the round's numbers (none before
+## the first round, under --shop); the bar and the HUD hide while it is open.
 func open_shop() -> void:
-	if phase != Phase.SUMMARY:
-		return
 	_enter(Phase.SHOP)
-	summary.hide_results()
+	_serve_queued = false
 	_show_world(false)
-	shop.open()
+	shop.open(Shop.round_line(GameState.round_number, round_stats) if not round_stats.is_empty() else "")
 
 
 ## From the shop to the next round.
@@ -163,8 +158,8 @@ func next_round() -> void:
 	start_round()
 
 
-## Shows or hides the bar (this node's canvas items) and the HUD; the summary
-## and the shop are layers of their own.
+## Shows or hides the bar (this node's canvas items) and the HUD; the shop is
+## a layer of its own.
 func _show_world(on: bool) -> void:
 	visible = on
 	hud.visible = on
@@ -203,7 +198,7 @@ func is_serving_phase() -> bool:
 ## — while serving, once the glass has landed, if the player owns it and it
 ## isn't on the glass yet. True if it was added.
 func try_garnish(key: Key) -> bool:
-	if not is_serving_phase() or _summary_in >= 0.0 or not glass.visible or glass.is_arriving() or drink == null:
+	if not is_serving_phase() or _shop_in >= 0.0 or not glass.visible or glass.is_arriving() or drink == null:
 		return false
 	for g in drink.garnishes:
 		if g.key == key and GameState.owns_garnish(g):
@@ -239,9 +234,7 @@ func _physics_process(dt: float) -> void:
 			try_garnish(k)
 		if d.serve:
 			request_serve()
-		if phase == Phase.SUMMARY and phase_time >= AUTOPLAY_SUMMARY_WAIT:
-			open_shop()
-		elif phase == Phase.SHOP and phase_time >= AUTOPLAY_SHOP_WAIT:
+		if phase == Phase.SHOP and phase_time >= AUTOPLAY_SHOP_WAIT:
 			_autopilot.shop(self)
 			next_round()
 	tick(dt, hold)
@@ -263,16 +256,16 @@ func tick(dt: float, hold: bool) -> void:
 	phase_time += dt
 	if phase == Phase.SHOP:
 		return  # the round is over and the bar is hidden
-	if phase == Phase.INTRO or phase == Phase.SUMMARY:
+	if phase == Phase.INTRO:
 		hold = false
 	if phase == Phase.INTRO and phase_time >= INTRO_TIME:
 		_enter(Phase.PLAYING)
 	_step_sim(dt, hold)
 	effects.step(dt)
-	if _summary_in >= 0.0:
-		_summary_in -= dt
-		if _summary_in <= 0.0:
-			_summary_in = -1.0
+	if _shop_in >= 0.0:
+		_shop_in -= dt
+		if _shop_in <= 0.0:
+			_shop_in = -1.0
 			_finish_round()
 		_refresh_hud()
 		return
@@ -344,7 +337,7 @@ func _serve() -> void:
 	effects.puff(glass.center_global())
 	if phase == Phase.LAST_CALL:
 		glass.vanish()
-		_summary_in = SUMMARY_DELAY
+		_shop_in = SHOP_DELAY
 		return
 	var next := _pick_drink()
 	if next != drink:
@@ -368,9 +361,7 @@ func _on_landed(at: Vector2) -> void:
 
 
 func _finish_round() -> void:
-	_enter(Phase.SUMMARY)
-	_serve_queued = false
-	summary.show_results(GameState.round_number, round_stats, GameState.coins)
+	open_shop()
 
 
 func _unhandled_input(event: InputEvent) -> void:

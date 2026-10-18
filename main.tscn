@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://art/background.png" id="2_bg"]
@@ -7,7 +7,6 @@
 [ext_resource type="Script" path="res://stream.gd" id="5_stream"]
 [ext_resource type="Script" path="res://draw_layer.gd" id="7_layer"]
 [ext_resource type="Script" path="res://hud.gd" id="8_hud"]
-[ext_resource type="PackedScene" path="res://round_summary.tscn" id="9_summary"]
 [ext_resource type="Script" path="res://effects.gd" id="10_effects"]
 [ext_resource type="Script" path="res://shadows.gd" id="11_shadows"]
 [ext_resource type="Script" path="res://reflection.gd" id="12_reflection"]
@@ -75,8 +74,6 @@ script = ExtResource("10_effects")
 
 [node name="Hud" type="CanvasLayer" parent="."]
 script = ExtResource("8_hud")
-
-[node name="RoundSummary" parent="." instance=ExtResource("9_summary")]
 
 [node name="Shop" type="CanvasLayer" parent="."]
 script = ExtResource("13_shop")
