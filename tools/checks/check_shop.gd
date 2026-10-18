@@ -85,6 +85,10 @@ func run() -> void:
 	shop.show_tab(Shop.Tab.UPGRADES)
 	shop._finish_turn()
 	eq(shop.blacked_out_lines(), 7, "UPGRADES: 2 water, 3 wine and 2 beer lines blacked out")
+	var beer_header: Array = shop.page._headers.filter(func(h: Array) -> bool: return h[1] == "BEER")
+	var beer_rows: Array = shop.page._redacted.slice(-2)
+	expect(beer_header.size() == 1 and beer_rows.all(func(r: Array) -> bool: return r[0].position.x == beer_header[0][0].position.x),
+		"UPGRADES: BEER's lines sit under its header, in one column")
 	GameState.round_number = 1
 	shop.show_tab(Shop.Tab.MENU)
 	shop._finish_turn()
