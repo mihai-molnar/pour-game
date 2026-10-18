@@ -1,7 +1,8 @@
 extends CheckBase
 ## Checks the glass: exact capacity and fixed target per drink, rows from the
-## line and the scoring band in rows, geometry helpers, the fill-line tick on a glass
-## that narrows toward the rim, setup leaving no state behind, and the
+## line and the scoring band in rows, geometry helpers, where the fill line and
+## band marks are drawn (on the rows scoring measures), the drawn liquid
+## matching the volume and level, setup leaving no state behind, and the
 ## arrival. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=glass
 
@@ -40,7 +41,12 @@ func run() -> void:
 	expect(_tint_clear(glass), "wall tint polygons leave the interior clear")
 	var walls := glass.outer_x_at(-37.0)
 	expect(walls.is_equal_approx(Vector2(-19, 19)), "outer walls at mid height (got %s)" % walls)
-	eq(glass.left_tick(), Vector2i(-25, -23), "water: the fill-line tick is unchanged")
+	eq(glass.line_y(), -68.0, "water: the fill line is drawn on row -68")
+	eq(glass.band_edges(1), Vector2(-69.5, -66.5), "PERFECT spans ±1.5 rows around the line")
+	eq(glass.band_edges(3), Vector2(-71.5, -64.5), "GOOD ticks at ±3.5")
+	eq(glass.band_edges(6), Vector2(-74.0, -61.5), "GOOD ENOUGH reaches the rim and is cut there")
+	expect(glass.bracket_x() <= glass.outer_x_at(-68.0).x - 2.0, "the bracket clears the wall (%.1f)" % glass.bracket_x())
+	_check_drawn_liquid(glass)
 
 	_check_wine(glass, wine)
 	glass.setup(water)
@@ -65,8 +71,41 @@ func _check_wine(glass: Glass, wine: DrinkDef) -> void:
 	expect(rising, "wine: the level rises with every 25 px² poured")
 	expect(is_equal_approx(glass.rim_y_world(), 184.0), "wine: rim at y=184 (got %.1f)" % glass.rim_y_world())
 	expect(glass.opening_world() == Vector2(238, 274), "wine: opening (got %s)" % glass.opening_world())
-	eq(glass.left_tick(), Vector2i(-30, -28), "wine: the tick runs from the bracket to the bulging wall")
+	var ly := float(roundi(glass.target_y()))
+	eq(glass.line_y(), ly, "wine: the fill line is drawn on the target's row")
+	eq(glass.band_edges(6), Vector2(ly - 6.5, ly + 6.5), "wine: GOOD ENOUGH spans ±6.5 rows inside the bowl")
+	var bulge := INF
+	for y in range(int(ly) - 7, int(ly) + 8):
+		bulge = minf(bulge, glass.outer_x_at(float(y)).x)
+	expect(glass.bracket_x() <= bulge - 2.0, "wine: the bracket clears the bowl's bulge (%.1f vs %.1f)" % [glass.bracket_x(), bulge])
+	_check_drawn_liquid(glass)
 	expect(_tint_clear(glass), "wine: wall tint polygons leave the bowl clear")
+
+
+## What is drawn must match what is scored: a calm glass's liquid top sits
+## exactly on level_for(volume), its area matches the volume, it never draws
+## above the rim, and every amount (a first drop to brim-full) triangulates.
+func _check_drawn_liquid(glass: Glass) -> void:
+	var n := glass.def.id
+	for vol in [0.6, 3.0, 400.0, glass.target, glass.capacity]:
+		glass.reset()
+		glass.volume = vol
+		glass.step(DT)
+		var poly := glass.liquid_polygon()
+		expect(poly.is_empty() or not Geometry2D.triangulate_polygon(poly).is_empty(), "%s: liquid at %.1f triangulates" % [n, vol])
+		if vol >= 3.0:
+			expect(not poly.is_empty(), "%s: %.0f px² of liquid is drawn" % [n, vol])
+		if poly.is_empty():
+			continue
+		var top := INF
+		for p in poly:
+			top = minf(top, p.y)
+		if vol >= 3.0:
+			near(top, glass.level_for(vol), "%s: calm liquid top at %.0f px² is the scored level" % [n, vol], 0.05)
+		if vol >= 400.0:
+			near(Pourer.poly_area(poly) / vol, 1.0, "%s: drawn liquid area matches %.0f px²" % [n, vol], 0.04)
+		expect(top >= glass.level_for(glass.capacity) - 0.01, "%s: liquid never draws above the rim" % n)
+	glass.reset()
 
 
 func _check_arrival(glass: Glass, water: DrinkDef) -> void:
@@ -105,7 +144,7 @@ func _check_arrival(glass: Glass, water: DrinkDef) -> void:
 
 
 func _tint_clear(glass: Glass) -> bool:
-	var tint := DrawLayer.wall_polygons(glass.outer, glass.interior)
+	var tint := VesselArt.walls(glass.outer, glass.interior)
 	var c := Vector2.ZERO
 	for p in glass.interior:
 		c += p

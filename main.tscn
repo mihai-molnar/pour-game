@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://art/background.png" id="2_bg"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://hud.gd" id="8_hud"]
 [ext_resource type="PackedScene" path="res://round_summary.tscn" id="9_summary"]
 [ext_resource type="Script" path="res://effects.gd" id="10_effects"]
+[ext_resource type="Script" path="res://shadows.gd" id="11_shadows"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glass"]
 shader = ExtResource("6_liquid")
@@ -44,6 +45,9 @@ centered = false
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(300, 186)
 zoom = Vector2(1.8, 1.8)
+
+[node name="Shadows" type="Node2D" parent="."]
+script = ExtResource("11_shadows")
 
 [node name="Glass" type="Node2D" parent="."]
 position = Vector2(256, 280)

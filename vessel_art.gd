@@ -10,6 +10,16 @@ extends RefCounted
 const ARC_STEP := deg_to_rad(15.0)
 
 static var _soft: GradientTexture2D
+static var _clear_walls: GradientTexture1D
+
+
+## The wall fill for clear glass (pass the outer's x range to draw_hgradient):
+## brightest at the left edge, a rim of light on the right.
+static func clear_glass_walls() -> GradientTexture1D:
+	if _clear_walls == null:
+		_clear_walls = gradient([[0.0, Color(Palette.WHITE, 0.52)], [0.18, Color(Palette.FROST, 0.22)],
+			[0.6, Color(Palette.FROST, 0.13)], [1.0, Color(Palette.WHITE, 0.38)]])
+	return _clear_walls
 
 
 ## `poly` with every corner (convex or concave) replaced by an arc of
@@ -120,6 +130,33 @@ static func inner_streak(interior: PackedVector2Array, y0: float, y1: float, ins
 			pts.append(Vector2(span.x + inset, y))
 		y += 1.5
 	return pts
+
+
+## Draws a closed outline of `poly` whose opacity follows x: transparent left
+## of `from` (a share of the width), `color` at the right edge — light caught
+## by the right-hand wall.
+static func draw_rim_light(ci: CanvasItem, poly: PackedVector2Array, color: Color, width: float, from := 0.72) -> void:
+	var x0 := INF
+	var x1 := -INF
+	for p in poly:
+		x0 = minf(x0, p.x)
+		x1 = maxf(x1, p.x)
+	var pts := poly.duplicate()
+	pts.append(poly[0])
+	var colors := PackedColorArray()
+	for p in pts:
+		colors.append(Color(color, color.a * clampf(((p.x - x0) / (x1 - x0) - from) / (1.0 - from), 0.0, 1.0)))
+	ci.draw_polyline_colors(pts, colors, width, true)
+
+
+## Draws `pts` as a soft highlight: `color` at the first point fading to 15 % at the last.
+static func draw_streak(ci: CanvasItem, pts: PackedVector2Array, color: Color, width: float) -> void:
+	if pts.size() < 2:
+		return
+	var colors := PackedColorArray()
+	for i in pts.size():
+		colors.append(Color(color, color.a * lerpf(1.0, 0.15, float(i) / (pts.size() - 1))))
+	ci.draw_polyline_colors(pts, colors, width, true)
 
 
 ## A soft round shadow or glow: `color` at the centre fading to nothing at `radii`.

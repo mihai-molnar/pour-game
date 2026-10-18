@@ -22,6 +22,8 @@ enum RefillStyle { IN_PLACE, NEW_BOTTLE }
 @export var glass_outer := PackedVector2Array()
 ## The fill line as a share of the glass interior — fixed per drink type.
 @export_range(0.1, 1.0) var fill_fraction := 0.9
+## Corner rounding (px) for drawing the glass smooth; the physics keeps the sharp shapes.
+@export var glass_corner_radius := 2.0
 
 @export_group("Payout")
 ## Coins per scoring step, before the streak multiplier.
