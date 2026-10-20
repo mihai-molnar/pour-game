@@ -7,7 +7,8 @@ extends RefCounted
 ## DOWN on while the flow is under BEER_FLOW, off above it, until the beer the
 ## glass will hold once its head drains nears the line; it serves once the
 ## beer has crept up to the line (or the head has drained). In the shop it buys
-## ice, lime, wine and beer as soon as it can afford them.
+## ice, lime, wine and beer, then sparkling, premium, vintage and the refill
+## speeds, as soon as it can afford them (SHOPPING).
 
 ## Release DOWN when this share of the target is in the glass or the air, per
 ## drink id — the lower the line, the bigger the overshoot's share of the target.
@@ -25,7 +26,7 @@ const LIP_SHARE := 1.0
 
 
 ## What to buy, in order, whenever it can be afforded.
-const SHOPPING := [&"ice", &"lime", &"wine", &"beer"]
+const SHOPPING := [&"ice", &"lime", &"wine", &"beer", &"sparkling", &"premium", &"vintage", &"water_refill", &"wine_refill"]
 
 
 ## This tick's input: "hold" (DOWN), "serve" (Space), "keys" (garnish keys to press).
@@ -86,3 +87,6 @@ func shop(main: Main) -> void:
 			for g in d.garnishes:
 				if g.id == id:
 					main.shop.buy(g)
+			for u in d.upgrades:
+				if u.id == id:
+					main.shop.buy(u)

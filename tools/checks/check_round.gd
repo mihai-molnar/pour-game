@@ -537,6 +537,12 @@ func _iced_round_with_autopilot() -> void:
 	GameState.coins = 120
 	Autopilot.new().shop(main)
 	expect(GameState.owns_garnish(GameState.WATER.garnishes[1]) and GameState.owns_drink(GameState.WINE), "the autopilot buys ice, lime, wine")
+	GameState.coins = 400
+	Autopilot.new().shop(main)
+	eq(GameState.owned_upgrades, [&"sparkling", &"premium", &"vintage", &"water_refill", &"wine_refill"] as Array[StringName],
+		"then sparkling, premium, vintage and both refills")
+	eq(GameState.coins, 400 - 225, "...for 225")
+	GameState.owned_upgrades.clear()
 	GameState.set_on_menu(GameState.WINE, false)
 	main.start_round()
 	var pilot := Autopilot.new()
