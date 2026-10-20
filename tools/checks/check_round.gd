@@ -39,6 +39,7 @@ func run() -> void:
 	_beer_brings_a_new_bottle()
 	_beer_round_with_autopilot()
 	_beer_earns_at_least_wine()
+	_vintage_round_pays_more()
 
 
 func _fresh(round_number := 1, seed_value := 1) -> void:
@@ -537,6 +538,12 @@ func _iced_round_with_autopilot() -> void:
 	GameState.coins = 120
 	Autopilot.new().shop(main)
 	expect(GameState.owns_garnish(GameState.WATER.garnishes[1]) and GameState.owns_drink(GameState.WINE), "the autopilot buys ice, lime, wine")
+	GameState.coins = 400
+	Autopilot.new().shop(main)
+	eq(GameState.owned_upgrades, [&"sparkling", &"premium", &"vintage", &"water_refill", &"wine_refill"] as Array[StringName],
+		"then sparkling, premium, vintage and both refills")
+	eq(GameState.coins, 400 - 225, "...for 225")
+	GameState.owned_upgrades.clear()
 	GameState.set_on_menu(GameState.WINE, false)
 	main.start_round()
 	var pilot := Autopilot.new()
@@ -622,12 +629,13 @@ func _beer_brings_a_new_bottle() -> void:
 	expect(not main.pourer.is_arriving(), "wine still keeps its bottle across glasses")
 
 
-## A round of only `d`, played by the autopilot: its results, coins and how
-## many bottles were opened.
-func _round_of(d: DrinkDef, seed_value: int) -> Dictionary:
+## A round of only `d`, played by the autopilot (owning `upgrades`, by id): its
+## results, coins and how many bottles were opened.
+func _round_of(d: DrinkDef, seed_value: int, upgrades: Array[StringName] = []) -> Dictionary:
 	GameState.reset_session(seed_value)
 	if not GameState.owned_drinks.has(d):
 		GameState.owned_drinks.append(d)
+	GameState.owned_upgrades.assign(upgrades)
 	GameState.menu.assign([d])
 	main.start_round()
 	var pilot := Autopilot.new()
@@ -653,6 +661,25 @@ func _beer_round_with_autopilot() -> void:
 	expect(bands.size() >= 3, "the autopilot serves at least 3 beers in a round (%d)" % bands.size())
 	expect(good.size() * 10 >= bands.size() * 6 and not bands.has(Scoring.SPILL), "...mostly GOOD or better, no spill (%s)" % [bands])
 	expect(r.pops >= bands.size(), "each beer had its own bottle (%d caps for %d glasses)" % [r.pops, bands.size()])
+
+
+## Vintage pays through the round: the same autoplayed round of wine (same
+## seed, so the same pours) pays each glass round(base × 1.6) × its streak.
+func _vintage_round_pays_more() -> void:
+	var plain := _round_of(GameState.WINE, 7)
+	var vintage := _round_of(GameState.WINE, 7, [&"premium", &"vintage"])
+	var bonus: Array[UpgradeDef] = [GameState.WINE.upgrades[1]]
+	var no_garnish: Array[GarnishDef] = []
+	var bands: Array = vintage.results.map(func(x: Dictionary) -> StringName: return x.band)
+	eq(bands, plain.results.map(func(x: Dictionary) -> StringName: return x.band), "vintage doesn't change how the glasses go")
+	var want := []
+	var streak := 0
+	for r: Dictionary in vintage.results:
+		want.append(Scoring.paid_coins(Scoring.garnished_coins(Scoring.base_coins(r.band, GameState.WINE), no_garnish, bonus), streak, GameState.stats))
+		streak = r.streak
+	eq(vintage.results.map(func(x: Dictionary) -> int: return x.coins), want, "each vintage glass pays round(base x 1.6) x its streak")
+	expect(vintage.coins > plain.coins and bands.has(Scoring.PERFECT), "...more than plain wine (%d vs %d)" % [vintage.coins, plain.coins])
+	GameState.owned_upgrades.clear()
 
 
 ## Beer is worth its 150 coins: a round of it earns at least a round of wine.

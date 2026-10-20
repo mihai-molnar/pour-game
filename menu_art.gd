@@ -132,26 +132,76 @@ static func bottle_polygons(d: DrinkDef, box: Rect2) -> Array[PackedVector2Array
 	return out
 
 
-static func draw_bottle(ci: CanvasItem, d: DrinkDef, box: Rect2) -> void:
+## `look` is the wine label an upgrade gives: PREMIUM trims it in gold,
+## VINTAGE prints it dark with gold and gilds the foil.
+static func draw_bottle(ci: CanvasItem, d: DrinkDef, box: Rect2, look := UpgradeDef.LabelLook.PLAIN) -> void:
 	var polys := bottle_polygons(d, box)
 	var bottle := d.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE
 	ci.draw_colored_polygon(polys[0], Color(d.pourer_glass_color, 0.85) if bottle else Color(Palette.FROST, 0.35))
 	var i := 1
 	var beer := d.bottle_look == DrinkDef.BottleLook.BEER
+	var vintage := look == UpgradeDef.LabelLook.VINTAGE
 	if d.pourer_label.has_area():
-		ci.draw_colored_polygon(polys[i], Palette.LABEL)
+		ci.draw_colored_polygon(polys[i], Palette.VINTAGE_LABEL if vintage else Palette.LABEL)
+		var r := _bounds(polys[i])
 		if beer:  # the label's red band
-			var r := _bounds(polys[i])
 			ci.draw_rect(Rect2(r.position.x, r.position.y + r.size.y * 0.44, r.size.x, r.size.y * 0.22), Palette.BEER_LABEL)
+		if look != UpgradeDef.LabelLook.PLAIN:  # a gold frame
+			ci.draw_rect(r.grow(-0.9), Palette.CAP_GOLD, false, 0.5)
 		_outline(ci, polys[i], Color(Palette.MENU_INK, 0.6), 0.4)
 		i += 1
 	if d.pourer_foil.has_area():
-		ci.draw_colored_polygon(polys[i], Palette.BEER_LABEL if beer else Palette.WINE)
+		ci.draw_colored_polygon(polys[i], Palette.CAP_GOLD if vintage else (Palette.BEER_LABEL if beer else Palette.WINE))
 	if d.pourer_handle.size() >= 2:
 		ci.draw_polyline(_fit(d.pourer_handle, _bounds(d.pourer_outer + d.pourer_handle), box), Palette.MENU_INK, LINE, true)
 	_outline(ci, polys[0], Palette.MENU_INK)
 	var r := _bounds(polys[0])
 	ci.draw_line(Vector2(r.position.x + r.size.x * 0.22, r.position.y + r.size.y * 0.45), Vector2(r.position.x + r.size.x * 0.22, r.end.y - 2.0), Color(Palette.WHITE, 0.5), 0.7, true)
+
+
+## A drink's glass filled to its line, bubbles rising in it (sparkling).
+static func draw_sparkling(ci: CanvasItem, d: DrinkDef, box: Rect2) -> void:
+	draw_glass(ci, d, box, d.fill_fraction)
+	var polys := glass_polygons(d, box, d.fill_fraction)
+	if polys.size() < 2:
+		return
+	var r := _bounds(polys[1])
+	for b: Vector3 in [Vector3(0.3, 0.8, 0.7), Vector3(0.62, 0.62, 0.9), Vector3(0.4, 0.42, 0.8), Vector3(0.7, 0.22, 1.1), Vector3(0.28, 0.14, 0.9), Vector3(0.5, 0.88, 0.6)]:
+		var at := r.position + Vector2(b.x, b.y) * r.size
+		ci.draw_circle(at, b.z, Color(Palette.WHITE, 0.5))
+		ci.draw_arc(at, b.z, 0.0, TAU, 12, Palette.MENU_INK, 0.4, true)
+
+
+## A curved "again" arrow round `center`: most of a circle of `radius`, its
+## head at the top pointing clockwise. One polygon (band and head).
+static func refill_arrow_polygon(center: Vector2, radius: float) -> PackedVector2Array:
+	var w := radius * 0.28
+	var a0 := -PI * 0.5 + 0.55
+	var a1 := -PI * 0.5 + TAU - 0.9
+	var out := PackedVector2Array()
+	var n := 20
+	for k in n + 1:
+		out.append(center + Vector2.from_angle(lerpf(a0, a1, float(k) / n)) * (radius + w * 0.5))
+	out.append(center + Vector2.from_angle(a1) * (radius + w * 1.3))
+	out.append(center + Vector2.from_angle(a1 + 0.62) * radius)
+	out.append(center + Vector2.from_angle(a1) * (radius - w * 1.3))
+	for k in range(n, -1, -1):
+		out.append(center + Vector2.from_angle(lerpf(a0, a1, float(k) / n)) * (radius - w * 0.5))
+	return out
+
+
+## A drink's pourer with an "again" arrow at its lower right (refill speed).
+static func draw_refill(ci: CanvasItem, d: DrinkDef, box: Rect2) -> void:
+	var bottle := Rect2(box.position, box.size * Vector2(0.78, 0.86))
+	if d.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
+		draw_bottle(ci, d, Rect2(box.position + Vector2(box.size.x * 0.12, 0), Vector2(box.size.x * 0.5, box.size.y)))
+	else:
+		draw_bottle(ci, d, bottle)
+	var c := box.end - Vector2(5.5, 5.5)
+	ci.draw_circle(c, 5.6, Palette.PAPER)
+	var arrow := refill_arrow_polygon(c, 4.0)
+	ci.draw_colored_polygon(arrow, Palette.STAMP)
+	_outline(ci, arrow, Color(Palette.MENU_INK, 0.7), 0.35)
 
 
 ## A hand-drawn marker bar over `box`: slightly slanted, its edges wobbling

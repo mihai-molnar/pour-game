@@ -8,7 +8,8 @@ extends Node2D
 ## the line through the spout lip leaves through the spout. Volumes are areas
 ## in px², the same unit the glass uses. It arrives by sliding in from the
 ## right (arrive()); a bottle arrives corked and can't pour until the cork
-## pops. When it runs dry it refills over GameState.stats.refill_time: a
+## pops. When it runs dry it refills over GameState.refill_time(def) (its
+## drink's refill upgrades shorten stats.refill_time): a
 ## pitcher fills in place, an empty bottle is replaced by a new one that gets
 ## uncorked (a beer bottle has a crown cap instead, and its own label art).
 ## Input is ignored while it is busy (is_busy()). A beer bottle eases back
@@ -37,6 +38,12 @@ const WIGGLE_DEG := 4.0
 const WIGGLE_FREQ := 45.0
 ## How fast the popped cork leaves the neck (px/s).
 const CORK_SPEED := 160.0
+## Sparkling: its share of the glass's fizz (bubbles/s), and the most
+## bubbles in it at once. They rise like the glass's (Glass.SPARKLE_RISE).
+const FIZZ_SHARE := 0.4
+const BUBBLE_CAP := 40
+## How tall the vintage label's crest is (local px).
+const CREST_SIZE := 11.0
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -58,6 +65,12 @@ var exit_speed := 0.0
 var refilling := false
 ## A bottle that hasn't been uncorked yet; it can't pour.
 var corked := false
+## Bubbles per second rising through it: its drink's upgrades' fizz (sparkling
+## water). Set in reset(); visual only.
+var fizz := 0.0
+## Its bubbles: x, y (local), rise speed (visual only).
+var bubbles: Array[Vector3] = []
+var _bubble_due := 0.0
 
 var _refill_t := -1.0  # < 0 while still swinging back upright
 var _let_go := 0.0  # seconds since DOWN was let go (the ease-out return builds up over them)
@@ -120,6 +133,9 @@ func reset(fill := 1.0) -> void:
 	excess = 0.0
 	refilling = false
 	corked = false
+	fizz = GameState.upgrade_fizz(def) * FIZZ_SHARE
+	bubbles.clear()
+	_bubble_due = 0.0
 	_refill_t = -1.0
 	_arrive_t = -1.0
 	position = home
@@ -177,7 +193,7 @@ func refill_progress() -> float:
 		return 0.0
 	if def.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
 		return clampf(_arrive_t / (Arrival.ARRIVE_TIME + _uncork_time), 0.0, 1.0)
-	var duration: float = GameState.stats.refill_time
+	var duration: float = GameState.refill_time(def)
 	return clampf(_refill_t / duration, 0.0, 1.0) if duration > 0.0 else 1.0
 
 
@@ -234,7 +250,46 @@ func step(dt: float, hold: bool) -> float:
 		volume -= out
 	flow = out / dt
 	_update_surface()
+	if fizz > 0.0 or not bubbles.is_empty():
+		_step_bubbles(dt)
 	return out
+
+
+## Sparkling: bubbles start anywhere in the liquid, rise toward world-up
+## whatever its tilt, and pop once they leave the liquid.
+func _step_bubbles(dt: float) -> void:
+	var water := drawn_liquid_polygons()
+	var up := Vector2.UP.rotated(-rotation)
+	for i in range(bubbles.size() - 1, -1, -1):
+		var b := bubbles[i]
+		var at := Vector2(b.x, b.y) + up * b.z * dt
+		at.x += sin(at.y * 0.7) * 0.05
+		if _in_any(at, water):
+			bubbles[i] = Vector3(at.x, at.y, b.z)
+		else:
+			bubbles.remove_at(i)
+	if water.is_empty():
+		return
+	var box := _bounds(water[0])
+	for poly in water:
+		box = box.merge(_bounds(poly))
+	_bubble_due += fizz * dt
+	while _bubble_due >= 1.0:
+		_bubble_due -= 1.0
+		if bubbles.size() >= BUBBLE_CAP:
+			continue
+		for attempt in 6:
+			var at := Vector2(randf_range(box.position.x, box.end.x), randf_range(box.position.y, box.end.y))
+			if _in_any(at, water):
+				bubbles.append(Vector3(at.x, at.y, randf_range(Glass.SPARKLE_RISE.x, Glass.SPARKLE_RISE.y)))
+				break
+
+
+static func _in_any(p: Vector2, polys: Array[PackedVector2Array]) -> bool:
+	for poly in polys:
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return true
+	return false
 
 
 func _step_refill(dt: float) -> void:
@@ -248,14 +303,14 @@ func _step_refill(dt: float) -> void:
 			# You don't refill a bottle: this one goes, a new corked one comes and is uncorked.
 			vanished.emit(center_global())
 			volume = full_volume
-			_start_arrival(maxf(GameState.stats.refill_time - Arrival.ARRIVE_TIME, MIN_UNCORK), true)
+			_start_arrival(maxf(GameState.refill_time(def) - Arrival.ARRIVE_TIME, MIN_UNCORK), true)
 			return
 	if bottle:
 		if not corked:
 			refilling = false  # the cork just popped
 		return
 	_refill_t += dt
-	var duration: float = GameState.stats.refill_time
+	var duration: float = GameState.refill_time(def)
 	var t := clampf(_refill_t / duration, 0.0, 1.0) if duration > 0.0 else 1.0
 	volume = lerpf(_refill_from, full_volume, t)
 	if t >= 1.0:
@@ -481,17 +536,24 @@ func _draw_front(ci: CanvasItem) -> void:
 		for seg in Geometry2D.intersect_polyline_with_polygon(line, _drawn_interior):
 			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.85), 0.45, true)
+	var bubble := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
+	for b in bubbles:
+		ci.draw_circle(Vector2(b.x, b.y), 0.55, Color(bubble, 0.15))
+		ci.draw_arc(Vector2(b.x, b.y), 0.55, 0.0, TAU, 10, Color(bubble, 0.5), 0.22, true)
 	var beer := def.bottle_look == DrinkDef.BottleLook.BEER
+	var look := GameState.label_look(def)
 	if def.pourer_label.has_area():
 		if beer:
 			_draw_beer_label(ci, def.pourer_label)
+		elif look == UpgradeDef.LabelLook.VINTAGE:
+			_draw_vintage_label(ci, def.pourer_label)
 		else:
-			_draw_label(ci, def.pourer_label)
+			_draw_label(ci, def.pourer_label, look == UpgradeDef.LabelLook.PREMIUM)
 	if def.pourer_foil.has_area():
 		if beer:
 			_draw_neck_label(ci, def.pourer_foil)
 		else:
-			_draw_foil(ci, def.pourer_foil)
+			_draw_foil(ci, def.pourer_foil, look)
 	var inner := _bounds(_drawn_interior)
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 3.0, inner.end.y - 6.0, 2.3), Color(Palette.WHITE, 0.45), 1.8)
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 20.0, lerpf(inner.position.y, inner.end.y, 0.6), 4.8), Color(Palette.WHITE, 0.25), 0.6)
@@ -515,23 +577,83 @@ func _draw_front(ci: CanvasItem) -> void:
 		ci.draw_polyline(shine, Color(Palette.WHITE, 0.55), 0.6, true)
 
 
-## A paper label round the body: cream, shaded toward the edges, thin rules and a small grape emblem.
-func _draw_label(ci: CanvasItem, r: Rect2) -> void:
+## A paper label round the body: cream, shaded toward the edges, thin rules and
+## a small grape emblem. Premium (wine's upgrade): the rules are doubled in
+## gold and the emblem is gilded.
+func _draw_label(ci: CanvasItem, r: Rect2, premium := false) -> void:
 	VesselArt.draw_hgradient(ci, _rect_poly(r), r.position.x, r.end.x, _label_tex())
 	var ink := Color(Palette.WINE, 0.85)
-	ci.draw_rect(Rect2(r.position.x, r.position.y + 3.0, r.size.x, 0.6), ink)
-	ci.draw_rect(Rect2(r.position.x, r.end.y - 3.6, r.size.x, 0.6), ink)
+	var gold := Color(Palette.CAP_GOLD.darkened(0.12), 0.95)
+	var emblem := gold if premium else ink
+	if premium:
+		_draw_gold_rules(ci, r, gold)
+	else:
+		ci.draw_rect(Rect2(r.position.x, r.position.y + 3.0, r.size.x, 0.6), ink)
+		ci.draw_rect(Rect2(r.position.x, r.end.y - 3.6, r.size.x, 0.6), ink)
 	var c := r.position + Vector2(r.size.x * 0.5, r.size.y * 0.38)
-	ci.draw_arc(c, 6.0, 0.0, TAU, 32, ink, 0.6, true)
+	ci.draw_arc(c, 6.0, 0.0, TAU, 32, emblem, 0.6, true)
+	if premium:
+		ci.draw_arc(c, 7.0, 0.0, TAU, 32, Color(gold, 0.6), 0.3, true)
 	for d in [Vector2(-1.6, -1.4), Vector2(1.6, -1.4), Vector2(0, 1.4), Vector2(-1.6, 4.0), Vector2(1.6, 4.0), Vector2(0, -4.0)]:
-		ci.draw_circle(c + d * Vector2(1, 0.75) + Vector2(0, -1.0), 1.0, ink)
+		ci.draw_circle(c + d * Vector2(1, 0.75) + Vector2(0, -1.0), 1.0, emblem)
 	ci.draw_rect(Rect2(c.x - 12.0, r.end.y - 14.0, 24.0, 1.4), ink)
 	ci.draw_rect(Rect2(c.x - 8.0, r.end.y - 9.5, 16.0, 0.9), Color(ink, 0.5))
 
 
-## A foil capsule round the neck: dark red, a band of light down it.
-func _draw_foil(ci: CanvasItem, r: Rect2) -> void:
-	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 0.8), r.position.x, r.end.x, _foil_tex())
+## Vintage (wine's upgrade): a dark label printed in gold — doubled gold rules,
+## a crest under a small crown between two sprigs of laurel, and a year.
+func _draw_vintage_label(ci: CanvasItem, r: Rect2) -> void:
+	VesselArt.draw_hgradient(ci, _rect_poly(r), r.position.x, r.end.x, _vintage_tex())
+	var gold := Palette.CAP_GOLD
+	_draw_gold_rules(ci, r, gold)
+	var c := crest_center(r)
+	var crest := VesselArt.crest_polygon(c, CREST_SIZE)
+	ci.draw_colored_polygon(crest, gold)
+	ci.draw_line(c + Vector2(-4.5, -4.0), c + Vector2(3.5, 4.5), Palette.VINTAGE_LABEL, 1.2, true)  # a bend across it
+	var closed := crest.duplicate()
+	closed.append(crest[0])
+	ci.draw_polyline(closed, gold.darkened(0.45), 0.35, true)
+	ci.draw_colored_polygon(VesselArt.crown_polygon(c + Vector2(0, -6.4), 6.0), gold)
+	for side: float in [-1.0, 1.0]:  # laurel: an arc of little leaves either side
+		for k in 5:
+			var a := PI * 0.5 + side * (0.75 + k * 0.33)
+			var at := c + Vector2.from_angle(a) * Vector2(8.6, 7.4) + Vector2(0, 0.8)
+			ci.draw_set_transform(at, a + PI * 0.5, Vector2(0.45, 1.0))
+			ci.draw_circle(Vector2.ZERO, 1.05, Color(gold, 0.9))
+			ci.draw_set_transform(Vector2.ZERO)
+	# The year: ~5 world px tall, drawn at about its size on screen (glyphs are
+	# rasterised at font size × the window's oversampling, not the zoom).
+	var font := MenuArt.title_font(500, 1)
+	var font_size := 9
+	var k := 5.4 / font_size
+	var year := "1987"
+	var w := font.get_string_size(year, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * k
+	ci.draw_set_transform(Vector2(c.x - w * 0.5, r.end.y - 11.0), 0.0, Vector2(k, k))
+	ci.draw_string(font, Vector2.ZERO, year, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, gold)
+	ci.draw_set_transform(Vector2.ZERO)
+	ci.draw_rect(Rect2(c.x - 7.0, r.end.y - 8.6, 14.0, 0.5), Color(gold, 0.55))
+
+
+## Where the vintage label's crest sits on label `r` (its centre).
+static func crest_center(r: Rect2) -> Vector2:
+	return r.position + Vector2(r.size.x * 0.5, 14.0)
+
+
+## Two gold rules near the top of a label and two near its foot.
+func _draw_gold_rules(ci: CanvasItem, r: Rect2, gold: Color) -> void:
+	for y in [r.position.y + 2.2, r.end.y - 2.8]:
+		ci.draw_rect(Rect2(r.position.x, y, r.size.x, 0.6), gold)
+		ci.draw_rect(Rect2(r.position.x, y + 1.1, r.size.x, 0.3), Color(gold, 0.8))
+
+
+## A foil capsule round the neck: dark red, a band of light down it. Premium
+## gives it a gold band at its foot; vintage gilds it all.
+func _draw_foil(ci: CanvasItem, r: Rect2, look := UpgradeDef.LabelLook.PLAIN) -> void:
+	var vintage := look == UpgradeDef.LabelLook.VINTAGE
+	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 0.8), r.position.x, r.end.x, _gold_foil_tex() if vintage else _foil_tex())
+	if look == UpgradeDef.LabelLook.PREMIUM:
+		var band := Rect2(r.position.x, r.end.y - 2.6, r.size.x, 1.6)
+		VesselArt.draw_hgradient(ci, _rect_poly(band), band.position.x, band.end.x, _gold_foil_tex())
 	ci.draw_line(Vector2(r.position.x + 0.4, r.position.y + 0.3), Vector2(r.end.x - 0.4, r.position.y + 0.3), Color(Palette.SAND, 0.5), 0.5, true)
 
 
@@ -569,6 +691,8 @@ func _draw_neck_label(ci: CanvasItem, r: Rect2) -> void:
 
 static var _label: GradientTexture1D
 static var _foil: GradientTexture1D
+static var _vintage: GradientTexture1D
+static var _gold_foil: GradientTexture1D
 static var _neck: GradientTexture1D
 
 
@@ -582,6 +706,20 @@ static func _label_tex() -> GradientTexture1D:
 	if _label == null:
 		_label = VesselArt.gradient([[0.0, Palette.TAN], [0.28, Palette.LABEL], [0.7, Palette.LABEL.darkened(0.06)], [1.0, Palette.TAN.darkened(0.1)]])
 	return _label
+
+
+static func _vintage_tex() -> GradientTexture1D:
+	if _vintage == null:
+		_vintage = VesselArt.gradient([[0.0, Palette.VINTAGE_LABEL.darkened(0.5)], [0.28, Palette.VINTAGE_LABEL.lightened(0.14)],
+			[0.7, Palette.VINTAGE_LABEL], [1.0, Palette.VINTAGE_LABEL.darkened(0.55)]])
+	return _vintage
+
+
+static func _gold_foil_tex() -> GradientTexture1D:
+	if _gold_foil == null:
+		_gold_foil = VesselArt.gradient([[0.0, Palette.CAP_GOLD.darkened(0.55)], [0.35, Palette.CAP_GOLD.lightened(0.2)],
+			[0.65, Palette.CAP_GOLD.darkened(0.2)], [1.0, Palette.CAP_GOLD.darkened(0.65)]])
+	return _gold_foil
 
 
 static func _foil_tex() -> GradientTexture1D:

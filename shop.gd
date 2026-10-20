@@ -2,7 +2,7 @@ class_name Shop
 extends CanvasLayer
 ## The shop between rounds, over the whole screen: a printed drinks menu on a
 ## dark table, with coloured index tabs down its right edge. UPGRADES sells
-## the garnishes of your drinks, DRINKS sells new drinks, MENU switches your
+## the garnishes and upgrades of your drinks, DRINKS sells new drinks, MENU switches your
 ## drinks on and off for the next round; lines still to unlock are blacked
 ## out. Each page is a MenuPage of MenuLines; clicking a tab turns the page.
 ## Built in code and laid out by hand in the 640x360 HUD space, like Hud.
@@ -11,7 +11,8 @@ extends CanvasLayer
 signal next_pressed
 
 enum Tab { UPGRADES, DRINKS, MENU }
-enum CardState { CAN_BUY, CANT_AFFORD, OWNED }
+## NEEDS: another upgrade must be bought first (vintage after premium).
+enum CardState { CAN_BUY, CANT_AFFORD, OWNED, NEEDS }
 
 const TAB_NAMES := ["UPGRADES", "DRINKS", "MENU"]
 const TAB_COLORS := [Palette.TAB_UPGRADES, Palette.TAB_DRINKS, Palette.TAB_MENU]
@@ -22,7 +23,7 @@ const TAB_SIZE := Vector2(30, 74)
 const TAB_TOP := 44.0
 const TAB_GAP := 8.0
 ## Blacked-out lines (things to unlock later): per drink on UPGRADES, and on DRINKS.
-const UPGRADE_TEASERS := {&"water": 2, &"wine": 3, &"beer": 2}
+const UPGRADE_TEASERS := {&"beer": 2}
 const DRINK_TEASERS := 4
 ## How long a page takes to turn.
 const TURN_TIME := 0.35
@@ -191,16 +192,27 @@ static func card_state(price: int, owned: bool, coins: int) -> CardState:
 	return CardState.CAN_BUY if coins >= price else CardState.CANT_AFFORD
 
 
-## Whether a DrinkDef or GarnishDef can be bought now.
+## Whether a DrinkDef, GarnishDef or UpgradeDef can be bought now.
 func state_of(item: Resource) -> CardState:
 	if item is GarnishDef:
 		return card_state(item.price, GameState.owns_garnish(item), GameState.coins)
+	if item is UpgradeDef:
+		var u := item as UpgradeDef
+		if not GameState.owns_upgrade(u) and u.replaces != null and not GameState.owns_upgrade(u.replaces):
+			return CardState.NEEDS
+		return card_state(u.price, GameState.owns_upgrade(u), GameState.coins)
 	return card_state(item.price, GameState.owns_drink(item), GameState.coins)
 
 
-## Buys a DrinkDef or GarnishDef; true if it was bought (coins spent).
+## Buys a DrinkDef, GarnishDef or UpgradeDef; true if it was bought (coins spent).
 func buy(item: Resource) -> bool:
-	var bought := GameState.buy_garnish(item) if item is GarnishDef else GameState.buy_drink(item)
+	var bought: bool
+	if item is GarnishDef:
+		bought = GameState.buy_garnish(item)
+	elif item is UpgradeDef:
+		bought = GameState.buy_upgrade(item)
+	else:
+		bought = GameState.buy_drink(item)
 	refresh()
 	if bought:
 		for line in lines:
@@ -250,10 +262,19 @@ func _build_page(t: Tab) -> MenuPage:
 				if not GameState.is_unlocked(d):
 					continue  # its section would give away the blacked-out drink
 				var rows: Array = []
-				for g in d.garnishes:
-					var line := _line(g, g.display_name, "%s · %s to add" % [g.description, OS.get_keycode_string(g.key).to_upper()], _garnish_picture(g))
-					line.show_price(g.price, state_of(g))
-					rows.append(line)
+				if GameState.owns_drink(d):
+					for g in d.garnishes:
+						var line := _line(g, g.display_name, "%s · %s to add" % [g.description, OS.get_keycode_string(g.key).to_upper()], _garnish_picture(g))
+						line.show_price(g.price, state_of(g))
+						rows.append(line)
+					for u in d.upgrades:
+						var state := state_of(u)
+						var text := u.locked_description if state == CardState.NEEDS and u.locked_description != "" else u.description
+						var line := _line(u, u.display_name, text, _upgrade_picture(d, u))
+						line.show_price(u.price, state)
+						rows.append(line)
+				else:
+					rows.resize(d.garnishes.size() + d.upgrades.size())  # on sale once you own the drink: blacked out
 				for i in UPGRADE_TEASERS.get(d.id, 0):
 					rows.append(null)
 				if not rows.is_empty():
@@ -264,7 +285,7 @@ func _build_page(t: Tab) -> MenuPage:
 				if d.price > 0 and not GameState.is_unlocked(d):
 					rows.append(null)  # not on sale yet: blacked out
 				elif d.price > 0:
-					var line := _line(d, d.display_name, "Pays %d / %d / %d" % [d.perfect_coins, d.good_coins, d.ok_coins],
+					var line := _line(d, d.display_name, _pays(d, []),
 						func(ci: CanvasItem) -> void: MenuArt.draw_bottle(ci, d, Rect2(-7, -13, 14, 26)))
 					line.show_price(d.price, state_of(d))
 					rows.append(line)
@@ -275,7 +296,7 @@ func _build_page(t: Tab) -> MenuPage:
 		Tab.MENU:
 			var rows: Array = []
 			for d in GameState.owned_drinks:
-				var line := _line(d, d.display_name, "Pays %d / %d / %d" % [d.perfect_coins, d.good_coins, d.ok_coins],
+				var line := _line(d, d.display_name, _pays(d, GameState.active_upgrades(d)),
 					func(ci: CanvasItem) -> void: MenuArt.draw_glass(ci, d, MenuLine.PICTURE, d.fill_fraction))
 				var on := GameState.menu.has(d)
 				line.show_toggle(on, on and GameState.menu.size() == 1)
@@ -299,6 +320,24 @@ func _on_line(item: Resource) -> void:
 		toggle(item)
 	else:
 		buy(item)
+
+
+## "Pays 24 / 14 / 8": a drink's steps with `upgrades` (garnishes left out:
+## they depend on the glass).
+static func _pays(d: DrinkDef, upgrades: Array[UpgradeDef]) -> String:
+	var no_garnish: Array[GarnishDef] = []
+	var steps := []
+	for base in [d.perfect_coins, d.good_coins, d.ok_coins]:
+		steps.append(Scoring.garnished_coins(base, no_garnish, upgrades))
+	return "Pays %d / %d / %d" % steps
+
+
+func _upgrade_picture(d: DrinkDef, u: UpgradeDef) -> Callable:
+	if u.fizz > 0.0:
+		return func(ci: CanvasItem) -> void: MenuArt.draw_sparkling(ci, d, MenuLine.PICTURE)
+	if u.refill_speed > 0.0:
+		return func(ci: CanvasItem) -> void: MenuArt.draw_refill(ci, d, MenuLine.PICTURE)
+	return func(ci: CanvasItem) -> void: MenuArt.draw_bottle(ci, d, Rect2(-7, -13, 14, 26), u.label_look)
 
 
 func _garnish_picture(g: GarnishDef) -> Callable:

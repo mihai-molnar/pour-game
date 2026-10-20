@@ -7,7 +7,8 @@ extends RefCounted
 ## DOWN on while the flow is under BEER_FLOW, off above it, until the beer the
 ## glass will hold once its head drains nears the line; it serves once the
 ## beer has crept up to the line (or the head has drained). In the shop it buys
-## ice, lime, wine and beer as soon as it can afford them.
+## ice, lime, wine and beer, then sparkling, premium, vintage and the refill
+## speeds, as soon as it can afford them (SHOPPING).
 
 ## Release DOWN when this share of the target is in the glass or the air, per
 ## drink id — the lower the line, the bigger the overshoot's share of the target.
@@ -25,7 +26,7 @@ const LIP_SHARE := 1.0
 
 
 ## What to buy, in order, whenever it can be afforded.
-const SHOPPING := [&"ice", &"lime", &"wine", &"beer"]
+const SHOPPING := [&"ice", &"lime", &"wine", &"beer", &"sparkling", &"premium", &"vintage", &"water_refill", &"wine_refill"]
 
 
 ## This tick's input: "hold" (DOWN), "serve" (Space), "keys" (garnish keys to press).
@@ -80,9 +81,4 @@ static func feather(pourer: Pourer, aim := BEER_FLOW) -> bool:
 ## Buys what it can in SHOPPING order, through the shop (so its menu shows it).
 func shop(main: Main) -> void:
 	for id in SHOPPING:
-		for d: DrinkDef in GameState.DRINKS:
-			if d.id == id:
-				main.shop.buy(d)
-			for g in d.garnishes:
-				if g.id == id:
-					main.shop.buy(g)
+		main.shop.buy(GameState.item_by_id(id))

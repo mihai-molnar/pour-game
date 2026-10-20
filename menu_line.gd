@@ -3,8 +3,8 @@ extends Control
 ## One item on the shop's menu: a small ink drawing, the name in bold
 ## condensed capitals, a description under it in typewriter type, and on the
 ## right the price (the button: click it to buy), an OWNED stamp, or — on the
-## MENU page — an ON/OFF checkbox. Lines that can't be afforded are printed
-## faded. Built in code in HUD units; Shop decides what it shows and reacts to
+## MENU page — an ON/OFF checkbox. Lines that can't be bought yet (too dear,
+## or another upgrade first) are printed faded. Built in code in HUD units; Shop decides what it shows and reacts to
 ## `activated` (the price clicked, or a menu line clicked anywhere).
 
 signal activated
@@ -13,15 +13,17 @@ const SIZE := Vector2(234, 30)
 ## The drawing's box, centred on (11, 15).
 const PICTURE := Rect2(-11, -12, 22, 24)
 
-## The DrinkDef or GarnishDef this line sells or switches.
+## The DrinkDef, GarnishDef or UpgradeDef this line sells or switches.
 var item: Resource
+var title_label: Label
+var description_label: Label
 var price_button: Button
 ## "OWNED", like a rubber stamp.
 var badge: Label
 var toggle_button: Button
 ## "At least one drink" under a checkbox that can't be unticked.
 var note: Label
-## Printed faded: can't be afforded.
+## Printed faded: can't be bought yet.
 var faded := false
 
 var _toggles := false
@@ -41,8 +43,8 @@ func _init(for_item: Resource, title: String, description: String, picture: Call
 	drawing.position = Vector2(11, 15)
 	drawing.draw_func = picture
 	add_child(drawing)
-	_label(Vector2(26, 0), title.to_upper(), MenuArt.title_font(600, 1), 12, Palette.MENU_INK)
-	_label(Vector2(26, 15), description, MenuArt.type_font(), 9, Color(Palette.MENU_INK, 0.72))
+	title_label = _label(Vector2(26, 0), title.to_upper(), MenuArt.title_font(600, 1), 12, Palette.MENU_INK)
+	description_label = _label(Vector2(26, 15), description, MenuArt.type_font(), 9, Color(Palette.MENU_INK, 0.72))
 
 	price_button = Button.new()
 	price_button.flat = true
@@ -126,18 +128,18 @@ func _label(pos: Vector2, text: String, font: Font, font_size: int, color: Color
 	return l
 
 
-## The price (faded and not clickable when it can't be afforded) or OWNED.
+## The price (faded and not clickable when it can't be bought yet) or OWNED.
 func show_price(price: int, state: Shop.CardState) -> void:
 	_toggles = false
 	var owned := state == Shop.CardState.OWNED
 	price_button.text = str(price)
 	_coin.position = Vector2(price_button.size.x - _text_width(price_button) - 11.0, 4)
 	price_button.visible = not owned
-	price_button.disabled = state == Shop.CardState.CANT_AFFORD
+	faded = state == Shop.CardState.CANT_AFFORD or state == Shop.CardState.NEEDS
+	price_button.disabled = faded
 	badge.visible = owned
 	toggle_button.visible = false
 	note.visible = false
-	faded = state == Shop.CardState.CANT_AFFORD
 	modulate.a = 0.4 if faded else 1.0
 
 

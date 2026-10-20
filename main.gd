@@ -13,6 +13,8 @@ extends Node2D
 ##   --autoplay           the Autopilot plays: pours, serves, visits the shop, starts the next round
 ##   --seed=N             seed the drink picks so a run repeats
 ##   --coins=N            start the session with N coins
+##   --buy=ID,ID          start owning these drinks, garnishes or upgrades, free (e.g. --buy=wine,premium,vintage)
+##   --menu=ID,ID         the owned drinks the rounds pick from (e.g. --buy=wine --menu=wine: wine only)
 ##   --shop               open the shop at startup (round 1 comes after it)
 ##   --round=N            start as if N rounds had been played (with --shop: the shop after round N)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
@@ -103,6 +105,16 @@ func _ready() -> void:
 		return
 	if args.has("coins"):
 		GameState.coins = int(args["coins"])
+	for id in String(args.get("buy", "")).split(",", false):
+		if not _grant(StringName(id)):
+			push_warning("--buy: nothing called %s" % id)
+	if args.has("menu"):
+		var ids := String(args["menu"]).split(",", false)
+		for d: DrinkDef in GameState.owned_drinks:
+			GameState.set_on_menu(d, true)
+		for d: DrinkDef in GameState.owned_drinks:
+			if not ids.has(String(d.id)):
+				GameState.set_on_menu(d, false)
 	if args.has("autoplay"):
 		_autopilot = Autopilot.new()
 	_shot_prefix = args.get("shots", "")
@@ -116,6 +128,20 @@ func _ready() -> void:
 	else:
 		GameState.round_number = played + 1
 		start_round()
+
+
+## Gives the player the drink, garnish or upgrade called `id` for free (the
+## --buy dev flag; a drink goes on the menu). False if there is none.
+func _grant(id: StringName) -> bool:
+	var item := GameState.item_by_id(id)
+	if item is DrinkDef and not GameState.owns_drink(item):
+		GameState.owned_drinks.append(item)
+		GameState.menu.append(item)
+	elif item is GarnishDef and not GameState.owns_garnish(item):
+		GameState.owned_garnishes.append(id)
+	elif item is UpgradeDef and not GameState.owns_upgrade(item):
+		GameState.owned_upgrades.append(id)
+	return item != null
 
 
 func _parse_args() -> Dictionary:
@@ -364,7 +390,8 @@ func _serve() -> void:
 			_finish_round()
 		return
 	var error := (glass.volume - glass.target) / glass.target
-	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats, glass.garnishes)
+	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats, glass.garnishes,
+		GameState.active_upgrades(drink))
 	r.coins = maxi(r.coins, -GameState.coins)  # a spill can't take the total below 0
 	r["drink"] = drink.id
 	streak = r.streak

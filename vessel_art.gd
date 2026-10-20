@@ -140,6 +140,32 @@ static func crown_cap_polygon(r: Rect2) -> PackedVector2Array:
 	return pts
 
 
+## A heraldic shield `size` tall centred on `center` (the vintage label's
+## crest): a flat top, straight sides, curving in to a point at the bottom.
+static func crest_polygon(center: Vector2, size: float) -> PackedVector2Array:
+	var w := size * 0.41
+	var h := size * 0.5
+	var pts := PackedVector2Array([center + Vector2(-w, -h), center + Vector2(w, -h)])
+	var n := 8
+	for k in n + 1:  # down the right side and round to the point
+		var t := float(k) / n
+		pts.append(center + Vector2(w * (1.0 - t * t), h * 0.1 + h * 0.9 * t))
+	for k in range(n - 1, -1, -1):  # and back up the left
+		var t := float(k) / n
+		pts.append(center + Vector2(-w * (1.0 - t * t), h * 0.1 + h * 0.9 * t))
+	return pts
+
+
+## A small crown `width` wide sitting on `base` (centre of its foot): a band
+## with three points.
+static func crown_polygon(base: Vector2, width: float) -> PackedVector2Array:
+	var w := width * 0.5
+	var pts := PackedVector2Array()
+	for p in [Vector2(-1, 0), Vector2(1, 0), Vector2(1, -0.62), Vector2(0.5, -0.3), Vector2(0, -0.8), Vector2(-0.5, -0.3), Vector2(-1, -0.62)]:
+		pts.append(base + p * w)
+	return pts
+
+
 static var _cap: GradientTexture1D
 
 

@@ -1,6 +1,6 @@
 extends CheckBase
 ## Checks the pure scoring rules: steps from rows off the line, fixed payouts,
-## the streak, the spill penalty and the garnish bonus. Run:
+## the streak, the spill penalty, the garnish bonus and the upgrades' bonus. Run:
 ##   "$GODOT" --headless --path . --quit-after 900 --script res://tools/run_check.gd -- --check=scoring
 
 
@@ -70,6 +70,27 @@ func run() -> void:
 	eq(Scoring.score(9, 0.0, false, 0, water, stats, both).coins, 0, "a garnished MISS pays 0")
 	eq(Scoring.score(0, 0.0, false, 0, water, stats, with_ice).garnishes, [&"ice"], "score records the garnishes")
 	eq(Scoring.score(0, 0.0, false, 0, water, stats).garnishes, [], "...none by default")
+	# Upgrades: always on, their bonus adds to the garnishes'; vintage replaces premium (GameState).
+	var sparkling: UpgradeDef = load("res://upgrades/sparkling.tres")
+	var premium: UpgradeDef = load("res://upgrades/premium.tres")
+	var vintage: UpgradeDef = load("res://upgrades/vintage.tres")
+	var bubbly: Array[UpgradeDef] = [sparkling]
+	var none: Array[GarnishDef] = []
+	var pays := []
+	for gs: Array[GarnishDef] in [none, both]:
+		for b in [Scoring.PERFECT, Scoring.GOOD, Scoring.GOOD_ENOUGH]:
+			pays.append(Scoring.garnished_coins(Scoring.base_coins(b, water), gs, bubbly))
+	eq(pays, [14, 8, 4, 19, 11, 6], "sparkling water pays 14/8/4, with ice and lime 19/11/6")
+	var wine_pays := []
+	var premium_only: Array[UpgradeDef] = [premium]
+	var vintage_only: Array[UpgradeDef] = [vintage]
+	for ups: Array[UpgradeDef] in [premium_only, vintage_only]:
+		for b in [Scoring.PERFECT, Scoring.GOOD, Scoring.GOOD_ENOUGH]:
+			wine_pays.append(Scoring.garnished_coins(Scoring.base_coins(b, wine), none, ups))
+	eq(wine_pays, [21, 13, 7, 24, 14, 8], "premium wine pays 21/13/7, vintage 24/14/8")
+	eq(Scoring.score(0, 0.0, false, 0, water, stats, both, bubbly).coins, 19, "score: garnishes and upgrades add up")
+	eq(Scoring.score(0, 0.1, true, 0, water, stats, both, bubbly).coins, -6, "a sparkling spill still costs 6")
+	eq(Scoring.score(9, 0.0, false, 0, water, stats, none, bubbly).coins, 0, "a sparkling MISS pays 0")
 	stats.coin_mult = 2.0
 	eq(Scoring.score(0, 0.0, false, 0, water, stats).coins, 20, "score: coin_mult doubles a payout")
 	eq(Scoring.score(0, 0.0, true, 0, water, stats).coins, -6, "score: ...but not a spill's cost")

@@ -1,7 +1,7 @@
 class_name DrinkDef
 extends Resource
 ## Everything that makes a drink a drink: the glass, the container you pour
-## from, the fill line, the payout, its price and garnishes, and the pour feel. One .tres per drink in
+## from, the fill line, the payout, its price, garnishes and upgrades, and the pour feel. One .tres per drink in
 ## res://drinks/. Shapes are local pixels with y down: the glass origin is its
 ## bottom center; the pourer origin is the spout lip (the tilt pivot). Pourer
 ## shapes are authored upright even when the pourer is held tipped
@@ -57,6 +57,8 @@ enum BottleLook { WINE, BEER }
 @export var unlock_round := 0
 ## What can be added to its glass while serving it (each bought once in the shop).
 @export var garnishes: Array[GarnishDef] = []
+## What it can be upgraded with for good (each bought once, once the drink is owned).
+@export var upgrades: Array[UpgradeDef] = []
 
 @export_group("Pourer")
 @export var pourer_interior := PackedVector2Array()

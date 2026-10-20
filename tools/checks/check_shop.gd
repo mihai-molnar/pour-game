@@ -42,9 +42,46 @@ func run() -> void:
 	GameState.round_number = 3
 	expect(GameState.is_unlocked(beer) and GameState.buy_drink(beer) and GameState.coins == 350, "after round 3 it sells for 150")
 	expect(GameState.new_drinks == [beer] and GameState.menu.has(beer), "bought beer is new and on the menu")
+	# Upgrades: bought once, a drink's only once you own it, vintage only after premium.
+	var sparkling: UpgradeDef = water.upgrades[0]
+	var water_refill: UpgradeDef = water.upgrades[1]
+	var premium: UpgradeDef = wine.upgrades[0]
+	var vintage: UpgradeDef = wine.upgrades[1]
+	var wine_refill: UpgradeDef = wine.upgrades[2]
+	eq([sparkling.id, water_refill.id, premium.id, vintage.id, wine_refill.id], [&"sparkling", &"water_refill", &"premium", &"vintage", &"wine_refill"],
+		"water sells sparkling and a refill, wine premium, vintage and a refill")
+	eq([sparkling.price, water_refill.price, premium.price, vintage.price, wine_refill.price], [25, 30, 50, 70, 50], "prices 25 / 30 / 50 / 70 / 50")
+	expect(GameState.BEER.upgrades.is_empty(), "beer has no upgrades yet")
+	GameState.reset_session(1)
+	GameState.coins = 500
+	expect(GameState.buy_upgrade(sparkling) and GameState.coins == 475 and GameState.owns_upgrade(sparkling), "sparkling costs 25")
+	expect(not GameState.buy_upgrade(sparkling) and GameState.coins == 475, "...and is bought once")
+	expect(not GameState.buy_upgrade(premium) and GameState.coins == 475, "wine's upgrades need wine")
+	eq(GameState.drink_of(premium), wine, "premium is wine's")
+	GameState.buy_drink(wine)
+	expect(not GameState.buy_upgrade(vintage) and GameState.coins == 395, "vintage needs premium first")
+	expect(GameState.buy_upgrade(premium) and GameState.coins == 345, "premium costs 50")
+	eq(GameState.active_upgrades(wine), [premium], "premium pays")
+	eq(GameState.label_look(wine), UpgradeDef.LabelLook.PREMIUM, "...with the premium label")
+	expect(GameState.buy_upgrade(vintage) and GameState.coins == 275, "then vintage costs 70")
+	eq(GameState.active_upgrades(wine), [vintage], "vintage replaces premium")
+	eq(GameState.label_look(wine), UpgradeDef.LabelLook.VINTAGE, "...and its label")
+	eq(GameState.active_upgrades(water), [sparkling], "water's upgrades are water's")
+	near(GameState.refill_time(water), 1.0, "no refill upgrade: refill_time")
+	expect(GameState.buy_upgrade(water_refill), "water refill bought")
+	near(GameState.refill_time(water), 1.0 / 1.5, "water refill: 50% faster")
+	near(GameState.refill_time(wine), 1.0, "...not wine's")
+	GameState.stats.refill_time = 0.5
+	expect(GameState.buy_upgrade(wine_refill), "wine refill bought")
+	near(GameState.refill_time(wine), 0.5 / 1.5, "the upgrade multiplies stats.refill_time")
+	GameState.stats.refill_time = 1.0
+	expect(GameState.fizz(water) > 0.0 and GameState.fizz(wine) == 0.0 and GameState.fizz(GameState.BEER) == GameState.BEER.fizz,
+		"sparkling fizzes water only")
 	GameState.reset_session(1)
 	expect(GameState.owned_drinks == [water] and GameState.menu == [water] and GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(),
 		"reset_session clears purchases and the menu")
+	expect(GameState.owned_upgrades.is_empty() and GameState.fizz(water) == 0.0 and GameState.label_look(wine) == UpgradeDef.LabelLook.PLAIN,
+		"...and the upgrades")
 
 	# The shop screen: a printed menu.
 	eq([Shop.card_state(10, false, 9), Shop.card_state(10, false, 10), Shop.card_state(10, true, 0)],
@@ -55,8 +92,8 @@ func run() -> void:
 	add_child(shop)
 	shop.open()
 	eq(shop.tab, Shop.Tab.UPGRADES, "the shop opens on UPGRADES the first time")
-	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime], "UPGRADES: water's ice and lime")
-	eq(shop.blacked_out_lines(), 5, "UPGRADES: 2 blacked-out water lines and 3 for wine")
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime, sparkling, water_refill], "UPGRADES: water's ice, lime, sparkling and refill")
+	eq(shop.blacked_out_lines(), 3, "UPGRADES: wine's 3 upgrades blacked out until you own wine")
 	expect(shop.state_of(ice) == Shop.CardState.CANT_AFFORD and shop.lines[0].price_button.disabled and shop.lines[0].faded, "5 coins: ice is printed faded")
 	GameState.coins = 20
 	shop.open()
@@ -73,6 +110,36 @@ func run() -> void:
 	GameState.coins = 80
 	shop.show_tab(Shop.Tab.DRINKS)
 	expect(shop.buy(wine) and GameState.menu.has(wine) and shop.state_of(wine) == Shop.CardState.OWNED, "wine bought, on the menu")
+	# Wine's upgrades go on sale in the same visit.
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._finish_turn()
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime, sparkling, water_refill, premium, vintage, wine_refill],
+		"UPGRADES once wine is owned: its premium, vintage and refill too")
+	eq(shop.blacked_out_lines(), 0, "...and nothing blacked out")
+	var too_long: Array[String] = []
+	for line in shop.lines:
+		for l: Label in [line.title_label, line.description_label]:
+			var w := l.get_theme_font("font").get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x
+			if w > l.size.x:
+				too_long.append("%s (%.0f > %.0f)" % [l.text, w, l.size.x])
+	expect(too_long.is_empty(), "every name and description fits its line (%s)" % ", ".join(too_long))
+	GameState.coins = 500
+	shop.refresh()
+	var vintage_line: MenuLine = shop.lines[5]
+	expect(shop.state_of(vintage) == Shop.CardState.NEEDS and vintage_line.faded and vintage_line.price_button.disabled,
+		"vintage before premium: printed faded, its price can't be clicked")
+	eq(vintage_line.description_label.text, vintage.locked_description, "...and it says it needs premium")
+	vintage_line.price_button.pressed.emit()
+	expect(not GameState.owns_upgrade(vintage) and GameState.coins == 500, "...and a click buys nothing")
+	expect(shop.buy(premium) and shop.state_of(vintage) == Shop.CardState.CAN_BUY, "once premium is owned vintage is on sale")
+	eq(shop.lines[5].description_label.text, vintage.description, "...with its own description")
+	expect(shop.buy(vintage) and shop.state_of(premium) == Shop.CardState.OWNED and shop.state_of(vintage) == Shop.CardState.OWNED, "vintage bought, premium still stamped OWNED")
+	shop.show_tab(Shop.Tab.MENU)
+	shop._finish_turn()
+	eq(shop.lines[1].description_label.text, "Pays 24 / 14 / 8", "MENU: vintage wine pays 24 / 14 / 8")
+	eq(shop.lines[0].description_label.text, "Pays 10 / 6 / 3", "...still water 10 / 6 / 3 (garnishes not counted)")
+	GameState.coins = 0
+	shop.refresh()
 	shop.show_tab(Shop.Tab.MENU)
 	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [water, wine], "MENU: a line per owned drink")
 	eq(shop.blacked_out_lines(), 0, "MENU: only what you own")
@@ -84,7 +151,7 @@ func run() -> void:
 	eq(shop.blacked_out_lines(), 4, "...then 4 drinks to come")
 	shop.show_tab(Shop.Tab.UPGRADES)
 	shop._finish_turn()
-	eq(shop.blacked_out_lines(), 7, "UPGRADES: 2 water, 3 wine and 2 beer lines blacked out")
+	eq(shop.blacked_out_lines(), 2, "UPGRADES: only beer's 2 lines blacked out")
 	var beer_header: Array = shop.page._headers.filter(func(h: Array) -> bool: return h[1] == "BEER")
 	var beer_rows: Array = shop.page._redacted.slice(-2)
 	expect(beer_header.size() == 1 and beer_rows.all(func(r: Array) -> bool: return r[0].position.x == beer_header[0][0].position.x),
@@ -144,6 +211,7 @@ func run() -> void:
 	for d: DrinkDef in GameState.DRINKS:
 		polys.append_array(MenuArt.glass_polygons(d, Rect2(0, 0, 20, 24), d.fill_fraction))
 		polys.append_array(MenuArt.bottle_polygons(d, Rect2(0, 0, 14, 26)))
+	polys.append(MenuArt.refill_arrow_polygon(Vector2.ZERO, 4.5))
 	for i in 12:
 		polys.append(MenuArt.redacted_polygon(Rect2(0, 0, 60 + i * 9, 9), i))
 	var bad := 0

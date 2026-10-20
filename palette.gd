@@ -51,4 +51,6 @@ const TAN := Color("c28569")
 const SAND := Color("e8b796")
 ## A bottle label's paper.
 const LABEL := Color("eadcbc")
+## A vintage wine's label: deep burgundy-black, printed in CAP_GOLD.
+const VINTAGE_LABEL := Color("2b1218")
 const PEACH := Color("e4a672")
