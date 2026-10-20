@@ -1,6 +1,10 @@
-[gd_resource type="Resource" script_class="DrinkDef" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="DrinkDef" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://drink_def.gd" id="1_drink"]
+[ext_resource type="Script" path="res://upgrade_def.gd" id="2_upgrade"]
+[ext_resource type="Resource" path="res://upgrades/premium.tres" id="3_premium"]
+[ext_resource type="Resource" path="res://upgrades/vintage.tres" id="4_vintage"]
+[ext_resource type="Resource" path="res://upgrades/wine_refill.tres" id="5_refill"]
 
 [resource]
 script = ExtResource("1_drink")
@@ -34,3 +38,4 @@ rest_bounce = 0.1
 pour_tilt_speed_deg = 5.0
 max_flow = 1000.0
 stream_speed_k = 3.0
+upgrades = Array[ExtResource("2_upgrade")]([ExtResource("3_premium"), ExtResource("4_vintage"), ExtResource("5_refill")])

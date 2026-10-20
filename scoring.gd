@@ -1,9 +1,9 @@
 class_name Scoring
 ## Pure scoring rules. A glass is judged by how many pixel rows its settled
 ## surface sits from the fill line, as drawn (Glass.rows_from_line): each step
-## pays a fixed amount from the DrinkDef (more with garnishes) and an overflow
-## costs coins. No scene
-## dependencies, so tools/checks/check_scoring.gd tests them directly.
+## pays a fixed amount from the DrinkDef (more with garnishes and upgrades) and
+## an overflow costs coins. No scene dependencies, so
+## tools/checks/check_scoring.gd tests them directly.
 
 const PERFECT := &"PERFECT"
 const GOOD := &"GOOD"
@@ -39,14 +39,17 @@ static func base_coins(b: StringName, def: DrinkDef) -> int:
 	return 0
 
 
-## A step's coins with the garnishes on the glass: each adds its `bonus` share,
-## rounded to whole coins (before the streak). A MISS or a spill is unchanged.
-static func garnished_coins(base: int, garnishes: Array[GarnishDef]) -> int:
+## A step's coins with the garnishes on the glass and the drink's upgrades in
+## effect: each adds its `bonus` share, rounded to whole coins (before the
+## streak). A MISS or a spill is unchanged.
+static func garnished_coins(base: int, garnishes: Array[GarnishDef], upgrades: Array[UpgradeDef] = []) -> int:
 	if base <= 0:
 		return base
 	var bonus := 0.0
 	for g in garnishes:
 		bonus += g.bonus
+	for u in upgrades:
+		bonus += u.bonus
 	return roundi(base * (1.0 + bonus))
 
 
@@ -80,9 +83,10 @@ static func paid_coins(base: int, streak_before: int, stats: Dictionary) -> int:
 ## signed volume error relative to the target (passed through for tools and the
 ## debug readout). `coins` is the nominal payout — negative for a spill; Main
 ## stops the coin total at 0. `streak` is the streak after this glass;
-## `garnishes` the ids of those that were on it.
+## `garnishes` the ids of those that were on it; `upgrades` are the drink's
+## upgrades in effect (GameState.active_upgrades).
 static func score(rows: int, error: float, spilled: bool, streak_before: int, def: DrinkDef, stats: Dictionary,
-		garnishes: Array[GarnishDef] = []) -> Dictionary:
+		garnishes: Array[GarnishDef] = [], upgrades: Array[UpgradeDef] = []) -> Dictionary:
 	var b := band(rows, spilled, stats)
 	var ids: Array[StringName] = []
 	for g in garnishes:
@@ -91,7 +95,7 @@ static func score(rows: int, error: float, spilled: bool, streak_before: int, de
 		"band": b,
 		"rows": rows,
 		"error": error,
-		"coins": paid_coins(garnished_coins(base_coins(b, def), garnishes), streak_before, stats),
+		"coins": paid_coins(garnished_coins(base_coins(b, def), garnishes, upgrades), streak_before, stats),
 		"streak": next_streak(streak_before, b),
 		"garnishes": ids,
 	}

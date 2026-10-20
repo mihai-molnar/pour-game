@@ -1,6 +1,6 @@
 extends Node
 ## Session state (autoload `GameState`): coins, round progress, what the shop
-## sold (drinks, garnishes), the menu of drinks the next round picks from, the
+## sold (drinks, garnishes, upgrades), the menu of drinks the next round picks from, the
 ## seeded generator that picks each glass's drink, and `stats` — every tunable
 ## a future upgrade may change. Gameplay reads `stats` at point of use and
 ## never hard-codes a value that has a key. Nothing is saved yet (session only).
@@ -31,6 +31,8 @@ var round_number := 1
 var owned_drinks: Array[DrinkDef] = [WATER]
 ## Ids of the garnishes bought.
 var owned_garnishes: Array[StringName] = []
+## Ids of the upgrades bought.
+var owned_upgrades: Array[StringName] = []
 ## The drinks switched on for the next round (never empty).
 var menu: Array[DrinkDef] = [WATER]
 ## Drinks bought since the last round started: the next round opens with one.
@@ -54,6 +56,7 @@ func reset_session(seed_value := -1) -> void:
 	owned_drinks.clear()
 	owned_drinks.append(WATER)
 	owned_garnishes.clear()
+	owned_upgrades.clear()
 	menu.clear()
 	menu.append(WATER)
 	new_drinks.clear()
@@ -70,6 +73,18 @@ func owns_drink(d: DrinkDef) -> bool:
 
 func owns_garnish(g: GarnishDef) -> bool:
 	return owned_garnishes.has(g.id)
+
+
+func owns_upgrade(u: UpgradeDef) -> bool:
+	return owned_upgrades.has(u.id)
+
+
+## The drink `u` upgrades (null if none lists it).
+func drink_of(u: UpgradeDef) -> DrinkDef:
+	for d: DrinkDef in DRINKS:
+		if d.upgrades.has(u):
+			return d
+	return null
 
 
 ## True once `d` is on sale: its unlock_round rounds have been played (in the
@@ -97,6 +112,65 @@ func buy_garnish(g: GarnishDef) -> bool:
 	coins -= g.price
 	owned_garnishes.append(g.id)
 	return true
+
+
+## Buys `u` if it isn't owned, its drink is owned, what it replaces is owned
+## and there are enough coins. False when nothing was bought.
+func buy_upgrade(u: UpgradeDef) -> bool:
+	var d := drink_of(u)
+	if owns_upgrade(u) or d == null or not owns_drink(d) or coins < u.price:
+		return false
+	if u.replaces != null and not owns_upgrade(u.replaces):
+		return false
+	coins -= u.price
+	owned_upgrades.append(u.id)
+	return true
+
+
+## The upgrades of `d` in effect: those owned, minus any another owned one
+## replaces (vintage, once bought, stands in for premium).
+func active_upgrades(d: DrinkDef) -> Array[UpgradeDef]:
+	var out: Array[UpgradeDef] = []
+	for u in d.upgrades:
+		if not owns_upgrade(u):
+			continue
+		var replaced := false
+		for other in d.upgrades:
+			replaced = replaced or (other.replaces == u and owns_upgrade(other))
+		if not replaced:
+			out.append(u)
+	return out
+
+
+## How long `d`'s pourer takes to refill: stats.refill_time, shortened by its
+## refill upgrades (0.5 faster = the time / 1.5).
+func refill_time(d: DrinkDef) -> float:
+	var speed := 1.0
+	for u in active_upgrades(d):
+		speed += u.refill_speed
+	return stats.refill_time / speed
+
+
+## Bubbles per second rising in a glass of `d`: its own fizz (beer) plus its
+## upgrades' (sparkling water).
+func fizz(d: DrinkDef) -> float:
+	return d.fizz + upgrade_fizz(d)
+
+
+## The fizz `d`'s upgrades add (it shows in the pourer too).
+func upgrade_fizz(d: DrinkDef) -> float:
+	var f := 0.0
+	for u in active_upgrades(d):
+		f += u.fizz
+	return f
+
+
+## The label on `d`'s bottle: the finest its upgrades give.
+func label_look(d: DrinkDef) -> UpgradeDef.LabelLook:
+	var look := UpgradeDef.LabelLook.PLAIN
+	for u in active_upgrades(d):
+		look = maxi(look, u.label_look) as UpgradeDef.LabelLook
+	return look
 
 
 ## Switches an owned drink on or off for the next round. False when refused:

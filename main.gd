@@ -364,7 +364,8 @@ func _serve() -> void:
 			_finish_round()
 		return
 	var error := (glass.volume - glass.target) / glass.target
-	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats, glass.garnishes)
+	var r := Scoring.score(glass.rows_from_line(glass.volume), error, glass.spilled > 0.5, streak, drink, GameState.stats, glass.garnishes,
+		GameState.active_upgrades(drink))
 	r.coins = maxi(r.coins, -GameState.coins)  # a spill can't take the total below 0
 	r["drink"] = drink.id
 	streak = r.streak

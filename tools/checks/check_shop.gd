@@ -42,9 +42,46 @@ func run() -> void:
 	GameState.round_number = 3
 	expect(GameState.is_unlocked(beer) and GameState.buy_drink(beer) and GameState.coins == 350, "after round 3 it sells for 150")
 	expect(GameState.new_drinks == [beer] and GameState.menu.has(beer), "bought beer is new and on the menu")
+	# Upgrades: bought once, a drink's only once you own it, vintage only after premium.
+	var sparkling: UpgradeDef = water.upgrades[0]
+	var water_refill: UpgradeDef = water.upgrades[1]
+	var premium: UpgradeDef = wine.upgrades[0]
+	var vintage: UpgradeDef = wine.upgrades[1]
+	var wine_refill: UpgradeDef = wine.upgrades[2]
+	eq([sparkling.id, water_refill.id, premium.id, vintage.id, wine_refill.id], [&"sparkling", &"water_refill", &"premium", &"vintage", &"wine_refill"],
+		"water sells sparkling and a refill, wine premium, vintage and a refill")
+	eq([sparkling.price, water_refill.price, premium.price, vintage.price, wine_refill.price], [25, 30, 50, 70, 50], "prices 25 / 30 / 50 / 70 / 50")
+	expect(GameState.BEER.upgrades.is_empty(), "beer has no upgrades yet")
+	GameState.reset_session(1)
+	GameState.coins = 500
+	expect(GameState.buy_upgrade(sparkling) and GameState.coins == 475 and GameState.owns_upgrade(sparkling), "sparkling costs 25")
+	expect(not GameState.buy_upgrade(sparkling) and GameState.coins == 475, "...and is bought once")
+	expect(not GameState.buy_upgrade(premium) and GameState.coins == 475, "wine's upgrades need wine")
+	eq(GameState.drink_of(premium), wine, "premium is wine's")
+	GameState.buy_drink(wine)
+	expect(not GameState.buy_upgrade(vintage) and GameState.coins == 395, "vintage needs premium first")
+	expect(GameState.buy_upgrade(premium) and GameState.coins == 345, "premium costs 50")
+	eq(GameState.active_upgrades(wine), [premium], "premium pays")
+	eq(GameState.label_look(wine), UpgradeDef.LabelLook.PREMIUM, "...with the premium label")
+	expect(GameState.buy_upgrade(vintage) and GameState.coins == 275, "then vintage costs 70")
+	eq(GameState.active_upgrades(wine), [vintage], "vintage replaces premium")
+	eq(GameState.label_look(wine), UpgradeDef.LabelLook.VINTAGE, "...and its label")
+	eq(GameState.active_upgrades(water), [sparkling], "water's upgrades are water's")
+	near(GameState.refill_time(water), 1.0, "no refill upgrade: refill_time")
+	expect(GameState.buy_upgrade(water_refill), "water refill bought")
+	near(GameState.refill_time(water), 1.0 / 1.5, "water refill: 50% faster")
+	near(GameState.refill_time(wine), 1.0, "...not wine's")
+	GameState.stats.refill_time = 0.5
+	expect(GameState.buy_upgrade(wine_refill), "wine refill bought")
+	near(GameState.refill_time(wine), 0.5 / 1.5, "the upgrade multiplies stats.refill_time")
+	GameState.stats.refill_time = 1.0
+	expect(GameState.fizz(water) > 0.0 and GameState.fizz(wine) == 0.0 and GameState.fizz(GameState.BEER) == GameState.BEER.fizz,
+		"sparkling fizzes water only")
 	GameState.reset_session(1)
 	expect(GameState.owned_drinks == [water] and GameState.menu == [water] and GameState.owned_garnishes.is_empty() and GameState.new_drinks.is_empty(),
 		"reset_session clears purchases and the menu")
+	expect(GameState.owned_upgrades.is_empty() and GameState.fizz(water) == 0.0 and GameState.label_look(wine) == UpgradeDef.LabelLook.PLAIN,
+		"...and the upgrades")
 
 	# The shop screen: a printed menu.
 	eq([Shop.card_state(10, false, 9), Shop.card_state(10, false, 10), Shop.card_state(10, true, 0)],

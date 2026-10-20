@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UpgradeDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://upgrade_def.gd" id="1_upgrade"]
+[ext_resource type="Resource" path="res://upgrades/premium.tres" id="2_premium"]
+
+[resource]
+script = ExtResource("1_upgrade")
+id = &"vintage"
+display_name = "Vintage"
+description = "Wine pays +60%, not +40%"
+price = 70
+bonus = 0.6
+replaces = ExtResource("2_premium")
+label_look = 2
