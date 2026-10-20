@@ -989,10 +989,11 @@ func _draw_front(ci: CanvasItem) -> void:
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.9), 0.45, true)
 	var bubble := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
+	var radius := 0.42 if _sparkling else 0.55  # sparkling water's are finer
 	for b in _bubbles:
 		var at := Vector2(b.x, b.y)
-		ci.draw_circle(at, 0.55, Color(bubble, 0.15))
-		ci.draw_arc(at, 0.55, 0.0, TAU, 10, Color(bubble, 0.5), 0.22, true)
+		ci.draw_circle(at, radius, Color(bubble, 0.15))
+		ci.draw_arc(at, radius, 0.0, TAU, 10, Color(bubble, 0.5), 0.22, true)
 	if volume >= 0.5:  # sparkling: bubbles on the walls under the water, glints where they pop
 		for b in _wall_bubbles:
 			if b.y > calm_y(b.x, _level) + 1.0:

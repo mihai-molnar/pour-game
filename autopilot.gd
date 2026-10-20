@@ -81,12 +81,4 @@ static func feather(pourer: Pourer, aim := BEER_FLOW) -> bool:
 ## Buys what it can in SHOPPING order, through the shop (so its menu shows it).
 func shop(main: Main) -> void:
 	for id in SHOPPING:
-		for d: DrinkDef in GameState.DRINKS:
-			if d.id == id:
-				main.shop.buy(d)
-			for g in d.garnishes:
-				if g.id == id:
-					main.shop.buy(g)
-			for u in d.upgrades:
-				if u.id == id:
-					main.shop.buy(u)
+		main.shop.buy(GameState.item_by_id(id))

@@ -33,14 +33,14 @@ func run() -> void:
 			expect(not walls.is_empty() and not _covers(walls, _centroid(pair[1])), "%s: walls leave the inside clear" % d.id)
 
 	expect(not Geometry2D.triangulate_polygon(VesselArt.crown_cap_polygon(Rect2(-1.5, -3, 10, 3.4))).is_empty(), "the crown cap triangulates")
-	var crest := VesselArt.crest_polygon(Vector2(3, 92), 11.0)
-	expect(not Geometry2D.triangulate_polygon(crest).is_empty(), "the vintage label's crest triangulates")
 	var label := wine.pourer_label
+	var crest := VesselArt.crest_polygon(Pourer.crest_center(label), Pourer.CREST_SIZE)
+	expect(not Geometry2D.triangulate_polygon(crest).is_empty(), "the vintage label's crest triangulates")
 	var box := Rect2(crest[0], Vector2.ZERO)
 	for p in crest:
 		box = box.expand(p)
 	expect(label.encloses(box.grow(1.0)), "...and sits on the label (%s in %s)" % [box, label])
-	expect(not Geometry2D.triangulate_polygon(VesselArt.crown_polygon(Vector2(3, 85), 6.0)).is_empty(), "...and the crown over it")
+	expect(not Geometry2D.triangulate_polygon(VesselArt.crown_polygon(Pourer.crest_center(label) + Vector2(0, -6.4), 6.0)).is_empty(), "...and the crown over it")
 	expect(not Geometry2D.triangulate_polygon(VesselArt.rounded(GameState.BEER.glass_outer, GameState.BEER.glass_corner_radius)).is_empty(), "the rounded beer glass (ringed foot) triangulates")
 
 	var s := VesselArt.inner_streak(water.glass_interior, -68.0, -12.0, 2.3)

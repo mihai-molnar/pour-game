@@ -119,9 +119,11 @@ cleaner gold-trimmed one; vintage adds a year and a crest".)*
 
 - Plain (today): cream label, two wine-red rules, an ink grape emblem, two
   lines of "print"; a dark red foil capsule.
-- **Premium**: the same cream label, now framed by a thin gold double border,
-  with the grape emblem in gold, and a gold band at the foot of the foil
-  capsule.
+- **Premium**: the same cream label, its rules doubled in gold at the top and
+  the foot (built as rules rather than a box frame *(my call)*: the label
+  wraps round the bottle, so a frame's sides would sit on its silhouette; the
+  shop's small drawing does frame it), the grape emblem in gold with a gold
+  ring round it, and a gold band at the foot of the foil capsule.
 - **Vintage**: a dark label (deep burgundy-black) with a gold frame, a gold
   crest (a small shield under a crown or wreath) and a year in gold under it;
   the foil capsule turns gold. It should read as clearly richer than premium at

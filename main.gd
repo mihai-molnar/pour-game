@@ -133,23 +133,15 @@ func _ready() -> void:
 ## Gives the player the drink, garnish or upgrade called `id` for free (the
 ## --buy dev flag; a drink goes on the menu). False if there is none.
 func _grant(id: StringName) -> bool:
-	for d: DrinkDef in GameState.DRINKS:
-		if d.id == id:
-			if not GameState.owns_drink(d):
-				GameState.owned_drinks.append(d)
-				GameState.menu.append(d)
-			return true
-		for g in d.garnishes:
-			if g.id == id:
-				if not GameState.owns_garnish(g):
-					GameState.owned_garnishes.append(g.id)
-				return true
-		for u in d.upgrades:
-			if u.id == id:
-				if not GameState.owns_upgrade(u):
-					GameState.owned_upgrades.append(u.id)
-				return true
-	return false
+	var item := GameState.item_by_id(id)
+	if item is DrinkDef and not GameState.owns_drink(item):
+		GameState.owned_drinks.append(item)
+		GameState.menu.append(item)
+	elif item is GarnishDef and not GameState.owns_garnish(item):
+		GameState.owned_garnishes.append(id)
+	elif item is UpgradeDef and not GameState.owns_upgrade(item):
+		GameState.owned_upgrades.append(id)
+	return item != null
 
 
 func _parse_args() -> Dictionary:

@@ -38,9 +38,12 @@ const WIGGLE_DEG := 4.0
 const WIGGLE_FREQ := 45.0
 ## How fast the popped cork leaves the neck (px/s).
 const CORK_SPEED := 160.0
-## Sparkling: the most bubbles in it at once, and how fast they rise (px/s).
+## Sparkling: its share of the glass's fizz (bubbles/s), and the most
+## bubbles in it at once. They rise like the glass's (Glass.SPARKLE_RISE).
+const FIZZ_SHARE := 0.4
 const BUBBLE_CAP := 40
-const BUBBLE_RISE := Vector2(12.0, 24.0)
+## How tall the vintage label's crest is (local px).
+const CREST_SIZE := 11.0
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -130,7 +133,7 @@ func reset(fill := 1.0) -> void:
 	excess = 0.0
 	refilling = false
 	corked = false
-	fizz = GameState.upgrade_fizz(def) * 0.4
+	fizz = GameState.upgrade_fizz(def) * FIZZ_SHARE
 	bubbles.clear()
 	_bubble_due = 0.0
 	_refill_t = -1.0
@@ -278,7 +281,7 @@ func _step_bubbles(dt: float) -> void:
 		for attempt in 6:
 			var at := Vector2(randf_range(box.position.x, box.end.x), randf_range(box.position.y, box.end.y))
 			if _in_any(at, water):
-				bubbles.append(Vector3(at.x, at.y, randf_range(BUBBLE_RISE.x, BUBBLE_RISE.y)))
+				bubbles.append(Vector3(at.x, at.y, randf_range(Glass.SPARKLE_RISE.x, Glass.SPARKLE_RISE.y)))
 				break
 
 
@@ -603,8 +606,8 @@ func _draw_vintage_label(ci: CanvasItem, r: Rect2) -> void:
 	VesselArt.draw_hgradient(ci, _rect_poly(r), r.position.x, r.end.x, _vintage_tex())
 	var gold := Palette.CAP_GOLD
 	_draw_gold_rules(ci, r, gold)
-	var c := r.position + Vector2(r.size.x * 0.5, 14.0)
-	var crest := VesselArt.crest_polygon(c, 11.0)
+	var c := crest_center(r)
+	var crest := VesselArt.crest_polygon(c, CREST_SIZE)
 	ci.draw_colored_polygon(crest, gold)
 	ci.draw_line(c + Vector2(-4.5, -4.0), c + Vector2(3.5, 4.5), Palette.VINTAGE_LABEL, 1.2, true)  # a bend across it
 	var closed := crest.duplicate()
@@ -618,8 +621,10 @@ func _draw_vintage_label(ci: CanvasItem, r: Rect2) -> void:
 			ci.draw_set_transform(at, a + PI * 0.5, Vector2(0.45, 1.0))
 			ci.draw_circle(Vector2.ZERO, 1.05, Color(gold, 0.9))
 			ci.draw_set_transform(Vector2.ZERO)
-	var font := MenuArt.title_font(500, 3)
-	var font_size := 24
+	# The year: ~5 world px tall, drawn at about its size on screen (glyphs are
+	# rasterised at font size × the window's oversampling, not the zoom).
+	var font := MenuArt.title_font(500, 1)
+	var font_size := 9
 	var k := 5.4 / font_size
 	var year := "1987"
 	var w := font.get_string_size(year, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * k
@@ -627,6 +632,11 @@ func _draw_vintage_label(ci: CanvasItem, r: Rect2) -> void:
 	ci.draw_string(font, Vector2.ZERO, year, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, gold)
 	ci.draw_set_transform(Vector2.ZERO)
 	ci.draw_rect(Rect2(c.x - 7.0, r.end.y - 8.6, 14.0, 0.5), Color(gold, 0.55))
+
+
+## Where the vintage label's crest sits on label `r` (its centre).
+static func crest_center(r: Rect2) -> Vector2:
+	return r.position + Vector2(r.size.x * 0.5, 14.0)
 
 
 ## Two gold rules near the top of a label and two near its foot.

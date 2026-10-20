@@ -82,8 +82,23 @@ func owns_upgrade(u: UpgradeDef) -> bool:
 ## The drink `u` upgrades (null if none lists it).
 func drink_of(u: UpgradeDef) -> DrinkDef:
 	for d: DrinkDef in DRINKS:
-		if d.upgrades.has(u):
+		for other in d.upgrades:
+			if other.id == u.id:
+				return d
+	return null
+
+
+## The drink, garnish or upgrade called `id` in the catalog (null if none).
+func item_by_id(id: StringName) -> Resource:
+	for d: DrinkDef in DRINKS:
+		if d.id == id:
 			return d
+		for g in d.garnishes:
+			if g.id == id:
+				return g
+		for u in d.upgrades:
+			if u.id == id:
+				return u
 	return null
 
 
@@ -136,7 +151,7 @@ func active_upgrades(d: DrinkDef) -> Array[UpgradeDef]:
 			continue
 		var replaced := false
 		for other in d.upgrades:
-			replaced = replaced or (other.replaces == u and owns_upgrade(other))
+			replaced = replaced or (other.replaces != null and other.replaces.id == u.id and owns_upgrade(other))
 		if not replaced:
 			out.append(u)
 	return out

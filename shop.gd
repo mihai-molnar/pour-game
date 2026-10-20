@@ -269,7 +269,8 @@ func _build_page(t: Tab) -> MenuPage:
 						rows.append(line)
 					for u in d.upgrades:
 						var state := state_of(u)
-						var line := _line(u, u.display_name, u.locked_description if state == CardState.NEEDS else u.description, _upgrade_picture(d, u))
+						var text := u.locked_description if state == CardState.NEEDS and u.locked_description != "" else u.description
+						var line := _line(u, u.display_name, text, _upgrade_picture(d, u))
 						line.show_price(u.price, state)
 						rows.append(line)
 				else:
