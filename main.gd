@@ -14,6 +14,7 @@ extends Node2D
 ##   --seed=N             seed the drink picks so a run repeats
 ##   --coins=N            start the session with N coins
 ##   --buy=ID,ID          start owning these drinks, garnishes or upgrades, free (e.g. --buy=wine,premium,vintage)
+##   --menu=ID,ID         the owned drinks the rounds pick from (e.g. --buy=wine --menu=wine: wine only)
 ##   --shop               open the shop at startup (round 1 comes after it)
 ##   --round=N            start as if N rounds had been played (with --shop: the shop after round N)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
@@ -107,6 +108,13 @@ func _ready() -> void:
 	for id in String(args.get("buy", "")).split(",", false):
 		if not _grant(StringName(id)):
 			push_warning("--buy: nothing called %s" % id)
+	if args.has("menu"):
+		var ids := String(args["menu"]).split(",", false)
+		for d: DrinkDef in GameState.owned_drinks:
+			GameState.set_on_menu(d, true)
+		for d: DrinkDef in GameState.owned_drinks:
+			if not ids.has(String(d.id)):
+				GameState.set_on_menu(d, false)
 	if args.has("autoplay"):
 		_autopilot = Autopilot.new()
 	_shot_prefix = args.get("shots", "")

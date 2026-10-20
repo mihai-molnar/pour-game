@@ -538,16 +538,19 @@ func _draw_front(ci: CanvasItem) -> void:
 		ci.draw_circle(Vector2(b.x, b.y), 0.55, Color(bubble, 0.15))
 		ci.draw_arc(Vector2(b.x, b.y), 0.55, 0.0, TAU, 10, Color(bubble, 0.5), 0.22, true)
 	var beer := def.bottle_look == DrinkDef.BottleLook.BEER
+	var look := GameState.label_look(def)
 	if def.pourer_label.has_area():
 		if beer:
 			_draw_beer_label(ci, def.pourer_label)
+		elif look == UpgradeDef.LabelLook.VINTAGE:
+			_draw_vintage_label(ci, def.pourer_label)
 		else:
-			_draw_label(ci, def.pourer_label)
+			_draw_label(ci, def.pourer_label, look == UpgradeDef.LabelLook.PREMIUM)
 	if def.pourer_foil.has_area():
 		if beer:
 			_draw_neck_label(ci, def.pourer_foil)
 		else:
-			_draw_foil(ci, def.pourer_foil)
+			_draw_foil(ci, def.pourer_foil, look)
 	var inner := _bounds(_drawn_interior)
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 3.0, inner.end.y - 6.0, 2.3), Color(Palette.WHITE, 0.45), 1.8)
 	VesselArt.draw_streak(ci, VesselArt.inner_streak(_drawn_interior, inner.position.y + 20.0, lerpf(inner.position.y, inner.end.y, 0.6), 4.8), Color(Palette.WHITE, 0.25), 0.6)
@@ -571,23 +574,76 @@ func _draw_front(ci: CanvasItem) -> void:
 		ci.draw_polyline(shine, Color(Palette.WHITE, 0.55), 0.6, true)
 
 
-## A paper label round the body: cream, shaded toward the edges, thin rules and a small grape emblem.
-func _draw_label(ci: CanvasItem, r: Rect2) -> void:
+## A paper label round the body: cream, shaded toward the edges, thin rules and
+## a small grape emblem. Premium (wine's upgrade): the rules are doubled in
+## gold and the emblem is gilded.
+func _draw_label(ci: CanvasItem, r: Rect2, premium := false) -> void:
 	VesselArt.draw_hgradient(ci, _rect_poly(r), r.position.x, r.end.x, _label_tex())
 	var ink := Color(Palette.WINE, 0.85)
-	ci.draw_rect(Rect2(r.position.x, r.position.y + 3.0, r.size.x, 0.6), ink)
-	ci.draw_rect(Rect2(r.position.x, r.end.y - 3.6, r.size.x, 0.6), ink)
+	var gold := Color(Palette.CAP_GOLD.darkened(0.12), 0.95)
+	var emblem := gold if premium else ink
+	if premium:
+		_draw_gold_rules(ci, r, gold)
+	else:
+		ci.draw_rect(Rect2(r.position.x, r.position.y + 3.0, r.size.x, 0.6), ink)
+		ci.draw_rect(Rect2(r.position.x, r.end.y - 3.6, r.size.x, 0.6), ink)
 	var c := r.position + Vector2(r.size.x * 0.5, r.size.y * 0.38)
-	ci.draw_arc(c, 6.0, 0.0, TAU, 32, ink, 0.6, true)
+	ci.draw_arc(c, 6.0, 0.0, TAU, 32, emblem, 0.6, true)
+	if premium:
+		ci.draw_arc(c, 7.0, 0.0, TAU, 32, Color(gold, 0.6), 0.3, true)
 	for d in [Vector2(-1.6, -1.4), Vector2(1.6, -1.4), Vector2(0, 1.4), Vector2(-1.6, 4.0), Vector2(1.6, 4.0), Vector2(0, -4.0)]:
-		ci.draw_circle(c + d * Vector2(1, 0.75) + Vector2(0, -1.0), 1.0, ink)
+		ci.draw_circle(c + d * Vector2(1, 0.75) + Vector2(0, -1.0), 1.0, emblem)
 	ci.draw_rect(Rect2(c.x - 12.0, r.end.y - 14.0, 24.0, 1.4), ink)
 	ci.draw_rect(Rect2(c.x - 8.0, r.end.y - 9.5, 16.0, 0.9), Color(ink, 0.5))
 
 
-## A foil capsule round the neck: dark red, a band of light down it.
-func _draw_foil(ci: CanvasItem, r: Rect2) -> void:
-	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 0.8), r.position.x, r.end.x, _foil_tex())
+## Vintage (wine's upgrade): a dark label printed in gold — doubled gold rules,
+## a crest under a small crown between two sprigs of laurel, and a year.
+func _draw_vintage_label(ci: CanvasItem, r: Rect2) -> void:
+	VesselArt.draw_hgradient(ci, _rect_poly(r), r.position.x, r.end.x, _vintage_tex())
+	var gold := Palette.CAP_GOLD
+	_draw_gold_rules(ci, r, gold)
+	var c := r.position + Vector2(r.size.x * 0.5, 14.0)
+	var crest := VesselArt.crest_polygon(c, 11.0)
+	ci.draw_colored_polygon(crest, gold)
+	ci.draw_line(c + Vector2(-4.5, -4.0), c + Vector2(3.5, 4.5), Palette.VINTAGE_LABEL, 1.2, true)  # a bend across it
+	var closed := crest.duplicate()
+	closed.append(crest[0])
+	ci.draw_polyline(closed, gold.darkened(0.45), 0.35, true)
+	ci.draw_colored_polygon(VesselArt.crown_polygon(c + Vector2(0, -6.4), 6.0), gold)
+	for side: float in [-1.0, 1.0]:  # laurel: an arc of little leaves either side
+		for k in 5:
+			var a := PI * 0.5 + side * (0.75 + k * 0.33)
+			var at := c + Vector2.from_angle(a) * Vector2(8.6, 7.4) + Vector2(0, 0.8)
+			ci.draw_set_transform(at, a + PI * 0.5, Vector2(0.45, 1.0))
+			ci.draw_circle(Vector2.ZERO, 1.05, Color(gold, 0.9))
+			ci.draw_set_transform(Vector2.ZERO)
+	var font := MenuArt.title_font(500, 3)
+	var font_size := 24
+	var k := 5.4 / font_size
+	var year := "1987"
+	var w := font.get_string_size(year, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * k
+	ci.draw_set_transform(Vector2(c.x - w * 0.5, r.end.y - 11.0), 0.0, Vector2(k, k))
+	ci.draw_string(font, Vector2.ZERO, year, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, gold)
+	ci.draw_set_transform(Vector2.ZERO)
+	ci.draw_rect(Rect2(c.x - 7.0, r.end.y - 8.6, 14.0, 0.5), Color(gold, 0.55))
+
+
+## Two gold rules near the top of a label and two near its foot.
+func _draw_gold_rules(ci: CanvasItem, r: Rect2, gold: Color) -> void:
+	for y in [r.position.y + 2.2, r.end.y - 2.8]:
+		ci.draw_rect(Rect2(r.position.x, y, r.size.x, 0.6), gold)
+		ci.draw_rect(Rect2(r.position.x, y + 1.1, r.size.x, 0.3), Color(gold, 0.8))
+
+
+## A foil capsule round the neck: dark red, a band of light down it. Premium
+## gives it a gold band at its foot; vintage gilds it all.
+func _draw_foil(ci: CanvasItem, r: Rect2, look := UpgradeDef.LabelLook.PLAIN) -> void:
+	var vintage := look == UpgradeDef.LabelLook.VINTAGE
+	VesselArt.draw_hgradient(ci, VesselArt.rounded(_rect_poly(r), 0.8), r.position.x, r.end.x, _gold_foil_tex() if vintage else _foil_tex())
+	if look == UpgradeDef.LabelLook.PREMIUM:
+		var band := Rect2(r.position.x, r.end.y - 2.6, r.size.x, 1.6)
+		VesselArt.draw_hgradient(ci, _rect_poly(band), band.position.x, band.end.x, _gold_foil_tex())
 	ci.draw_line(Vector2(r.position.x + 0.4, r.position.y + 0.3), Vector2(r.end.x - 0.4, r.position.y + 0.3), Color(Palette.SAND, 0.5), 0.5, true)
 
 
@@ -625,6 +681,8 @@ func _draw_neck_label(ci: CanvasItem, r: Rect2) -> void:
 
 static var _label: GradientTexture1D
 static var _foil: GradientTexture1D
+static var _vintage: GradientTexture1D
+static var _gold_foil: GradientTexture1D
 static var _neck: GradientTexture1D
 
 
@@ -638,6 +696,20 @@ static func _label_tex() -> GradientTexture1D:
 	if _label == null:
 		_label = VesselArt.gradient([[0.0, Palette.TAN], [0.28, Palette.LABEL], [0.7, Palette.LABEL.darkened(0.06)], [1.0, Palette.TAN.darkened(0.1)]])
 	return _label
+
+
+static func _vintage_tex() -> GradientTexture1D:
+	if _vintage == null:
+		_vintage = VesselArt.gradient([[0.0, Palette.VINTAGE_LABEL.darkened(0.5)], [0.28, Palette.VINTAGE_LABEL.lightened(0.14)],
+			[0.7, Palette.VINTAGE_LABEL], [1.0, Palette.VINTAGE_LABEL.darkened(0.55)]])
+	return _vintage
+
+
+static func _gold_foil_tex() -> GradientTexture1D:
+	if _gold_foil == null:
+		_gold_foil = VesselArt.gradient([[0.0, Palette.CAP_GOLD.darkened(0.55)], [0.35, Palette.CAP_GOLD.lightened(0.2)],
+			[0.65, Palette.CAP_GOLD.darkened(0.2)], [1.0, Palette.CAP_GOLD.darkened(0.65)]])
+	return _gold_foil
 
 
 static func _foil_tex() -> GradientTexture1D:
