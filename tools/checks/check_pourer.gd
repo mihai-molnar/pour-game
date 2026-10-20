@@ -58,6 +58,12 @@ func run() -> void:
 	GameState.stats.refill_time = 1.0
 	expect(absf(quick.refill_s - 0.5) < 0.1, "refill_time is read live (took %.2f s)" % quick.refill_s)
 	eq(_events.vanished, 0, "a pitcher never vanishes")
+	# Water's refill speed upgrade: 50 % faster, the pitcher only.
+	GameState.coins = 30
+	GameState.buy_upgrade(water.upgrades[1])
+	var upgraded := _drain_and_refill(pourer, false)
+	expect(absf(upgraded.refill_s - 1.0 / 1.5) < 0.05, "with water's refill speed it refills in 0.67 s (took %.2f s)" % upgraded.refill_s)
+	GameState.owned_upgrades.clear()
 
 	_check_arrival(pourer, water)
 	_check_wine(pourer, glass, wine)
@@ -205,6 +211,17 @@ func _check_wine(pourer: Pourer, glass: Glass, wine: DrinkDef) -> void:
 		eq(_events.popped, 2, "the new bottle is uncorked once per refill (refill_time %.1f)" % refill_time)
 		expect(is_equal_approx(pourer.volume, pourer.full_volume) and not pourer.corked and not pourer.refilling, "a full, open bottle after the refill")
 		expect(pourer.position == home, "back at home after the refill (%s)" % pourer.position)
+	# Wine's refill speed upgrade: the new bottle opens 50 % faster; with a
+	# shorter stats.refill_time too, the two multiply (never under the slide + 0.1 s).
+	GameState.owned_drinks.append(wine)
+	GameState.coins = 50
+	GameState.buy_upgrade(wine.upgrades[2])
+	for refill_time: float in [1.0, 0.5]:
+		GameState.stats.refill_time = refill_time
+		var quick := _drain_and_refill(pourer, false)
+		var want_s := maxf(refill_time / 1.5, Arrival.ARRIVE_TIME + Pourer.MIN_UNCORK)
+		expect(absf(quick.refill_s - want_s) < 0.05, "with wine's refill speed a bottle refill takes %.2f s (took %.2f s)" % [want_s, quick.refill_s])
+	GameState.owned_upgrades.clear()
 	GameState.stats.refill_time = 1.0
 
 

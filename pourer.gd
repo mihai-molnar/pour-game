@@ -8,7 +8,8 @@ extends Node2D
 ## the line through the spout lip leaves through the spout. Volumes are areas
 ## in px², the same unit the glass uses. It arrives by sliding in from the
 ## right (arrive()); a bottle arrives corked and can't pour until the cork
-## pops. When it runs dry it refills over GameState.stats.refill_time: a
+## pops. When it runs dry it refills over GameState.refill_time(def) (its
+## drink's refill upgrades shorten stats.refill_time): a
 ## pitcher fills in place, an empty bottle is replaced by a new one that gets
 ## uncorked (a beer bottle has a crown cap instead, and its own label art).
 ## Input is ignored while it is busy (is_busy()). A beer bottle eases back
@@ -177,7 +178,7 @@ func refill_progress() -> float:
 		return 0.0
 	if def.refill_style == DrinkDef.RefillStyle.NEW_BOTTLE:
 		return clampf(_arrive_t / (Arrival.ARRIVE_TIME + _uncork_time), 0.0, 1.0)
-	var duration: float = GameState.stats.refill_time
+	var duration: float = GameState.refill_time(def)
 	return clampf(_refill_t / duration, 0.0, 1.0) if duration > 0.0 else 1.0
 
 
@@ -248,14 +249,14 @@ func _step_refill(dt: float) -> void:
 			# You don't refill a bottle: this one goes, a new corked one comes and is uncorked.
 			vanished.emit(center_global())
 			volume = full_volume
-			_start_arrival(maxf(GameState.stats.refill_time - Arrival.ARRIVE_TIME, MIN_UNCORK), true)
+			_start_arrival(maxf(GameState.refill_time(def) - Arrival.ARRIVE_TIME, MIN_UNCORK), true)
 			return
 	if bottle:
 		if not corked:
 			refilling = false  # the cork just popped
 		return
 	_refill_t += dt
-	var duration: float = GameState.stats.refill_time
+	var duration: float = GameState.refill_time(def)
 	var t := clampf(_refill_t / duration, 0.0, 1.0) if duration > 0.0 else 1.0
 	volume = lerpf(_refill_from, full_volume, t)
 	if t >= 1.0:
