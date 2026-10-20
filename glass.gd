@@ -55,6 +55,11 @@ const LIME_ANGLE := -0.7
 const CUBE_LOOKS := [Vector4(-0.6, -0.14, 2.6, 0.5), Vector4(0.4, 0.09, -3.1, -0.4)]
 ## The fastest a cube enters the glass (px/s): the scripted fall ends faster.
 const ICE_ENTRY_SPEED := 220.0
+## Sparkling water: how fast its bubbles rise (px/s, min and max; beer's rise
+## 6–14), about how many cling to the walls, how long a pop's glint lasts (s).
+const SPARKLE_RISE := Vector2(12.0, 24.0)
+const WALL_BUBBLES := 8
+const GLINT_TIME := 0.15
 ## Tipping while pouring: time constants (s) tipping in and coming back, how
 ## long a gap in the pour it rides out (s), and the angle (rad) it snaps upright from.
 const TILT_IN := 0.1
@@ -111,8 +116,14 @@ var _tilt_idle := TILT_GRACE  # seconds since the pour last wanted it tipped
 var _lean := 0.0  # the arrival's lean (rad)
 var _mouth := Vector2.ZERO  # local: the middle of the opening, what it tips about
 var _foam_seed := 0.0  # the head's lumpy top and bubbles (visual)
-var _fizz_x := PackedFloat32Array()  # where beer's fizz rises from the floor (local x; visual)
+## Bubbles per second rising from the floor: the drink's own (beer) plus its
+## upgrades' (sparkling water). Set in reset(); visual only.
+var fizz := 0.0
+var _sparkling := false  # fizz from an upgrade: quick fine bubbles, some on the walls, glints
+var _fizz_x := PackedFloat32Array()  # where the fizz rises from the floor (local x; visual)
 var _fizz_due := 0.0
+var _wall_bubbles: Array[Vector3] = []  # sparkling: x, y (local), radius; shown below the surface
+var _glints: Array[Vector3] = []  # sparkling: x, y (local) where a bubble popped, age (s)
 
 @onready var _back: DrawLayer = $Back
 @onready var _liquid: DrawLayer = $Liquid
@@ -170,12 +181,22 @@ func reset() -> void:
 	_foam_seed = randf() * TAU
 	_fizz_x.clear()
 	_fizz_due = 0.0
-	if def != null and def.fizz > 0.0:
+	_wall_bubbles.clear()
+	_glints.clear()
+	fizz = GameState.fizz(def) if def != null else 0.0
+	_sparkling = def != null and GameState.upgrade_fizz(def) > 0.0
+	if fizz > 0.0:
 		var r := _row_area.size() - 1
 		while r > 0 and _row_area[r] == 0:
 			r -= 1
 		for i in randi_range(3, 5):
 			_fizz_x.append(randf_range(_row_left[r] + 1.0, _row_right[r]))
+	if _sparkling:  # tiny bubbles clinging to the inside of the walls
+		for i in randi_range(WALL_BUBBLES - 2, WALL_BUBBLES + 2):
+			var row := randi_range(roundi(_target_y) - _y0 - 4, _row_area.size() - 3)
+			var left := randf() < 0.5
+			var x := float(_row_left[row]) + 0.9 if left else float(_row_right[row]) + 0.1
+			_wall_bubbles.append(Vector3(x, float(_y0 + row) + 0.5, randf_range(0.35, 0.6)))
 
 
 ## Adds a garnish: ice starts falling, the lime starts dropping onto the rim.
@@ -709,7 +730,7 @@ func receive_local(x: float, vol: float, speed: float) -> void:
 		_wave_v[c - 1] -= kick * 0.5
 	if c < _wave_v.size() - 1:
 		_wave_v[c + 1] -= kick * 0.5
-	if randf() < vol * speed * 0.0004 * (3.0 if def.fizz > 0.0 else 1.0) and _bubbles.size() < _bubble_cap():
+	if randf() < vol * speed * 0.0004 * (3.0 if fizz > 0.0 else 1.0) and _bubbles.size() < _bubble_cap():
 		# Spawn under the impact, but never deeper than this column's floor.
 		var bc := clampi(c + randi_range(-2, 2), 0, _col_top.size() - 1)
 		var top := _surface_local(bc) + 2.0
@@ -721,7 +742,7 @@ func receive_local(x: float, vol: float, speed: float) -> void:
 
 ## How many bubbles it shows at most: more for a fizzy drink.
 func _bubble_cap() -> int:
-	return 120 if def.fizz > 0.0 else 40
+	return 120 if fizz > 0.0 else 40
 
 
 ## Liquid beyond max_liquid() spills over the rim and runs down the outside;
@@ -797,8 +818,8 @@ func step(dt: float) -> void:
 	if ice != null:
 		ice.step(dt, interior, _surface_at)
 
-	if def.fizz > 0.0 and volume >= 0.5 and not _fizz_x.is_empty():  # beer fizzes all the time
-		_fizz_due += def.fizz * dt
+	if fizz > 0.0 and volume >= 0.5 and not _fizz_x.is_empty():  # beer and sparkling water fizz all the time
+		_fizz_due += fizz * dt
 		while _fizz_due >= 1.0:
 			_fizz_due -= 1.0
 			if _bubbles.size() >= _bubble_cap():
@@ -807,7 +828,8 @@ func step(dt: float) -> void:
 			var fc := clampi(floori(fx) - _x0, 0, n - 1)
 			var fy := float(_col_bottom[fc]) - randf_range(0.6, 1.6)
 			if fy > _surface_local(fc) + 1.0:
-				_bubbles.append(Vector3(float(_x0 + fc) + 0.5, fy, randf_range(6.0, 14.0)))
+				var rise := randf_range(SPARKLE_RISE.x, SPARKLE_RISE.y) if _sparkling else randf_range(6.0, 14.0)
+				_bubbles.append(Vector3(float(_x0 + fc) + 0.5, fy, rise))
 
 	for i in range(_bubbles.size() - 1, -1, -1):
 		var b := _bubbles[i]
@@ -821,6 +843,8 @@ func step(dt: float) -> void:
 		var c := clampi(floori(b.x) - _x0, 0, n - 1)
 		# It pops at the surface, or at the wall where a bowl narrows toward the rim.
 		if volume < 0.5 or b.y <= maxf(_surface_local(c), float(_col_top[c])) + 1.0:
+			if _sparkling and foam == null and _glints.size() < 12 and b.y <= _surface_local(c) + 1.0:
+				_glints.append(Vector3(b.x, _surface_local(c) - 0.5, 0.0))
 			_bubbles.remove_at(i)
 		else:
 			_bubbles[i] = b
@@ -831,6 +855,10 @@ func step(dt: float) -> void:
 			_drips.remove_at(i)
 		else:
 			_drips[i] = d
+	for i in range(_glints.size() - 1, -1, -1):
+		_glints[i].z += dt
+		if _glints[i].z >= GLINT_TIME:
+			_glints.remove_at(i)
 
 	_back.queue_redraw()
 	_liquid.queue_redraw()
@@ -960,11 +988,19 @@ func _draw_front(ci: CanvasItem) -> void:
 		elif surface.size() >= 2:
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(surface, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.9), 0.45, true)
-	var fizz := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
+	var bubble := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
 	for b in _bubbles:
 		var at := Vector2(b.x, b.y)
-		ci.draw_circle(at, 0.55, Color(fizz, 0.15))
-		ci.draw_arc(at, 0.55, 0.0, TAU, 10, Color(fizz, 0.5), 0.22, true)
+		ci.draw_circle(at, 0.55, Color(bubble, 0.15))
+		ci.draw_arc(at, 0.55, 0.0, TAU, 10, Color(bubble, 0.5), 0.22, true)
+	if volume >= 0.5:  # sparkling: bubbles on the walls under the water, glints where they pop
+		for b in _wall_bubbles:
+			if b.y > calm_y(b.x, _level) + 1.0:
+				ci.draw_circle(Vector2(b.x, b.y), b.z, Color(bubble, 0.2))
+				ci.draw_arc(Vector2(b.x, b.y), b.z, 0.0, TAU, 8, Color(bubble, 0.6), 0.2, true)
+		for g in _glints:
+			var k := g.z / GLINT_TIME
+			ci.draw_circle(Vector2(g.x, g.y - k * 0.8), 0.3 + k * 0.35, Color(Palette.WHITE, 0.75 * (1.0 - k)))
 
 	# Light: streaks down the inside of the left wall, a rim of light on the right, the rim on top.
 	var top := box.position.y

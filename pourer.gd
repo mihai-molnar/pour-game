@@ -38,6 +38,9 @@ const WIGGLE_DEG := 4.0
 const WIGGLE_FREQ := 45.0
 ## How fast the popped cork leaves the neck (px/s).
 const CORK_SPEED := 160.0
+## Sparkling: the most bubbles in it at once, and how fast they rise (px/s).
+const BUBBLE_CAP := 40
+const BUBBLE_RISE := Vector2(12.0, 24.0)
 
 var def: DrinkDef
 var interior := PackedVector2Array()
@@ -59,6 +62,12 @@ var exit_speed := 0.0
 var refilling := false
 ## A bottle that hasn't been uncorked yet; it can't pour.
 var corked := false
+## Bubbles per second rising through it: its drink's upgrades' fizz (sparkling
+## water). Set in reset(); visual only.
+var fizz := 0.0
+## Its bubbles: x, y (local), rise speed (visual only).
+var bubbles: Array[Vector3] = []
+var _bubble_due := 0.0
 
 var _refill_t := -1.0  # < 0 while still swinging back upright
 var _let_go := 0.0  # seconds since DOWN was let go (the ease-out return builds up over them)
@@ -121,6 +130,9 @@ func reset(fill := 1.0) -> void:
 	excess = 0.0
 	refilling = false
 	corked = false
+	fizz = GameState.upgrade_fizz(def) * 0.4
+	bubbles.clear()
+	_bubble_due = 0.0
 	_refill_t = -1.0
 	_arrive_t = -1.0
 	position = home
@@ -235,7 +247,46 @@ func step(dt: float, hold: bool) -> float:
 		volume -= out
 	flow = out / dt
 	_update_surface()
+	if fizz > 0.0 or not bubbles.is_empty():
+		_step_bubbles(dt)
 	return out
+
+
+## Sparkling: bubbles start anywhere in the liquid, rise toward world-up
+## whatever its tilt, and pop once they leave the liquid.
+func _step_bubbles(dt: float) -> void:
+	var water := drawn_liquid_polygons()
+	var up := Vector2.UP.rotated(-rotation)
+	for i in range(bubbles.size() - 1, -1, -1):
+		var b := bubbles[i]
+		var at := Vector2(b.x, b.y) + up * b.z * dt
+		at.x += sin(at.y * 0.7) * 0.05
+		if _in_any(at, water):
+			bubbles[i] = Vector3(at.x, at.y, b.z)
+		else:
+			bubbles.remove_at(i)
+	if water.is_empty():
+		return
+	var box := _bounds(water[0])
+	for poly in water:
+		box = box.merge(_bounds(poly))
+	_bubble_due += fizz * dt
+	while _bubble_due >= 1.0:
+		_bubble_due -= 1.0
+		if bubbles.size() >= BUBBLE_CAP:
+			continue
+		for attempt in 6:
+			var at := Vector2(randf_range(box.position.x, box.end.x), randf_range(box.position.y, box.end.y))
+			if _in_any(at, water):
+				bubbles.append(Vector3(at.x, at.y, randf_range(BUBBLE_RISE.x, BUBBLE_RISE.y)))
+				break
+
+
+static func _in_any(p: Vector2, polys: Array[PackedVector2Array]) -> bool:
+	for poly in polys:
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return true
+	return false
 
 
 func _step_refill(dt: float) -> void:
@@ -482,6 +533,10 @@ func _draw_front(ci: CanvasItem) -> void:
 		for seg in Geometry2D.intersect_polyline_with_polygon(line, _drawn_interior):
 			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.5), 0.3), 1.8, true)
 			ci.draw_polyline(seg, Color(def.liquid_highlight.lerp(Palette.WHITE, 0.75), 0.85), 0.45, true)
+	var bubble := def.liquid_highlight.lerp(Palette.WHITE, 0.6)
+	for b in bubbles:
+		ci.draw_circle(Vector2(b.x, b.y), 0.55, Color(bubble, 0.15))
+		ci.draw_arc(Vector2(b.x, b.y), 0.55, 0.0, TAU, 10, Color(bubble, 0.5), 0.22, true)
 	var beer := def.bottle_look == DrinkDef.BottleLook.BEER
 	if def.pourer_label.has_area():
 		if beer:
