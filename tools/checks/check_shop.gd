@@ -92,8 +92,8 @@ func run() -> void:
 	add_child(shop)
 	shop.open()
 	eq(shop.tab, Shop.Tab.UPGRADES, "the shop opens on UPGRADES the first time")
-	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime], "UPGRADES: water's ice and lime")
-	eq(shop.blacked_out_lines(), 5, "UPGRADES: 2 blacked-out water lines and 3 for wine")
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime, sparkling, water_refill], "UPGRADES: water's ice, lime, sparkling and refill")
+	eq(shop.blacked_out_lines(), 3, "UPGRADES: wine's 3 upgrades blacked out until you own wine")
 	expect(shop.state_of(ice) == Shop.CardState.CANT_AFFORD and shop.lines[0].price_button.disabled and shop.lines[0].faded, "5 coins: ice is printed faded")
 	GameState.coins = 20
 	shop.open()
@@ -110,6 +110,36 @@ func run() -> void:
 	GameState.coins = 80
 	shop.show_tab(Shop.Tab.DRINKS)
 	expect(shop.buy(wine) and GameState.menu.has(wine) and shop.state_of(wine) == Shop.CardState.OWNED, "wine bought, on the menu")
+	# Wine's upgrades go on sale in the same visit.
+	shop.show_tab(Shop.Tab.UPGRADES)
+	shop._finish_turn()
+	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [ice, lime, sparkling, water_refill, premium, vintage, wine_refill],
+		"UPGRADES once wine is owned: its premium, vintage and refill too")
+	eq(shop.blacked_out_lines(), 0, "...and nothing blacked out")
+	var too_long: Array[String] = []
+	for line in shop.lines:
+		for l: Label in [line.title_label, line.description_label]:
+			var w := l.get_theme_font("font").get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x
+			if w > l.size.x:
+				too_long.append("%s (%.0f > %.0f)" % [l.text, w, l.size.x])
+	expect(too_long.is_empty(), "every name and description fits its line (%s)" % ", ".join(too_long))
+	GameState.coins = 500
+	shop.refresh()
+	var vintage_line: MenuLine = shop.lines[5]
+	expect(shop.state_of(vintage) == Shop.CardState.NEEDS and vintage_line.faded and vintage_line.price_button.disabled,
+		"vintage before premium: printed faded, its price can't be clicked")
+	eq(vintage_line.description_label.text, vintage.locked_description, "...and it says it needs premium")
+	vintage_line.price_button.pressed.emit()
+	expect(not GameState.owns_upgrade(vintage) and GameState.coins == 500, "...and a click buys nothing")
+	expect(shop.buy(premium) and shop.state_of(vintage) == Shop.CardState.CAN_BUY, "once premium is owned vintage is on sale")
+	eq(shop.lines[5].description_label.text, vintage.description, "...with its own description")
+	expect(shop.buy(vintage) and shop.state_of(premium) == Shop.CardState.OWNED and shop.state_of(vintage) == Shop.CardState.OWNED, "vintage bought, premium still stamped OWNED")
+	shop.show_tab(Shop.Tab.MENU)
+	shop._finish_turn()
+	eq(shop.lines[1].description_label.text, "Pays 24 / 14 / 8", "MENU: vintage wine pays 24 / 14 / 8")
+	eq(shop.lines[0].description_label.text, "Pays 10 / 6 / 3", "...still water 10 / 6 / 3 (garnishes not counted)")
+	GameState.coins = 0
+	shop.refresh()
 	shop.show_tab(Shop.Tab.MENU)
 	eq(shop.lines.map(func(l: MenuLine) -> Resource: return l.item), [water, wine], "MENU: a line per owned drink")
 	eq(shop.blacked_out_lines(), 0, "MENU: only what you own")
@@ -121,7 +151,7 @@ func run() -> void:
 	eq(shop.blacked_out_lines(), 4, "...then 4 drinks to come")
 	shop.show_tab(Shop.Tab.UPGRADES)
 	shop._finish_turn()
-	eq(shop.blacked_out_lines(), 7, "UPGRADES: 2 water, 3 wine and 2 beer lines blacked out")
+	eq(shop.blacked_out_lines(), 2, "UPGRADES: only beer's 2 lines blacked out")
 	var beer_header: Array = shop.page._headers.filter(func(h: Array) -> bool: return h[1] == "BEER")
 	var beer_rows: Array = shop.page._redacted.slice(-2)
 	expect(beer_header.size() == 1 and beer_rows.all(func(r: Array) -> bool: return r[0].position.x == beer_header[0][0].position.x),
@@ -181,6 +211,7 @@ func run() -> void:
 	for d: DrinkDef in GameState.DRINKS:
 		polys.append_array(MenuArt.glass_polygons(d, Rect2(0, 0, 20, 24), d.fill_fraction))
 		polys.append_array(MenuArt.bottle_polygons(d, Rect2(0, 0, 14, 26)))
+	polys.append(MenuArt.refill_arrow_polygon(Vector2.ZERO, 4.5))
 	for i in 12:
 		polys.append(MenuArt.redacted_polygon(Rect2(0, 0, 60 + i * 9, 9), i))
 	var bad := 0

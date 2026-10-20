@@ -13,6 +13,7 @@ extends Node2D
 ##   --autoplay           the Autopilot plays: pours, serves, visits the shop, starts the next round
 ##   --seed=N             seed the drink picks so a run repeats
 ##   --coins=N            start the session with N coins
+##   --buy=ID,ID          start owning these drinks, garnishes or upgrades, free (e.g. --buy=wine,premium,vintage)
 ##   --shop               open the shop at startup (round 1 comes after it)
 ##   --round=N            start as if N rounds had been played (with --shop: the shop after round N)
 ##   --shots=PREFIX       save PREFIX_<nn>.png every --shot-every=S seconds (default 1)
@@ -103,6 +104,9 @@ func _ready() -> void:
 		return
 	if args.has("coins"):
 		GameState.coins = int(args["coins"])
+	for id in String(args.get("buy", "")).split(",", false):
+		if not _grant(StringName(id)):
+			push_warning("--buy: nothing called %s" % id)
 	if args.has("autoplay"):
 		_autopilot = Autopilot.new()
 	_shot_prefix = args.get("shots", "")
@@ -116,6 +120,28 @@ func _ready() -> void:
 	else:
 		GameState.round_number = played + 1
 		start_round()
+
+
+## Gives the player the drink, garnish or upgrade called `id` for free (the
+## --buy dev flag; a drink goes on the menu). False if there is none.
+func _grant(id: StringName) -> bool:
+	for d: DrinkDef in GameState.DRINKS:
+		if d.id == id:
+			if not GameState.owns_drink(d):
+				GameState.owned_drinks.append(d)
+				GameState.menu.append(d)
+			return true
+		for g in d.garnishes:
+			if g.id == id:
+				if not GameState.owns_garnish(g):
+					GameState.owned_garnishes.append(g.id)
+				return true
+		for u in d.upgrades:
+			if u.id == id:
+				if not GameState.owns_upgrade(u):
+					GameState.owned_upgrades.append(u.id)
+				return true
+	return false
 
 
 func _parse_args() -> Dictionary:

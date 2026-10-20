@@ -8,6 +8,7 @@ script = ExtResource("1_upgrade")
 id = &"vintage"
 display_name = "Vintage"
 description = "Wine pays +60%, not +40%"
+locked_description = "Wine +60% · needs Premium"
 price = 70
 bonus = 0.6
 replaces = ExtResource("2_premium")

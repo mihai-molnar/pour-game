@@ -13,6 +13,8 @@ enum LabelLook { PLAIN, PREMIUM, VINTAGE }
 @export var display_name := ""
 ## The shop line's text, e.g. "Water pays +40%".
 @export var description := ""
+## The shop line's text while what it replaces isn't owned yet.
+@export var locked_description := ""
 @export var price := 25
 ## The share added to each step's coins; it adds up with the garnishes'.
 @export_range(0.0, 2.0) var bonus := 0.0
